@@ -717,13 +717,16 @@ function parseExcelWorkbook(wb) {
         return { is_anomaly: false, anomaly_type: '', anomaly_level: '' };
       };
       
-      // 是否為「資料列」:有管理處 + 有案場名稱
+      // 是否為「資料列」: 項次必須是正整數 + 管理處有值 + 案場名稱有值
+      // (跟官方計數規則一致:沒項次的列視為補充說明/重複列出/未正式納入,不計)
       const isHydroDataRow = (r) => {
         if (!r) return false;
+        const noVal = col.no >= 0 ? r[col.no] : null;
+        if (!(typeof noVal === 'number' && Number.isInteger(noVal) && noVal > 0 && noVal < 10000)) return false;
         const mgmt = String((col.mgmt >= 0 ? r[col.mgmt] : '') || '').trim();
         const name = String((col.name >= 0 ? r[col.name] : '') || '').trim();
         if (!mgmt || !name) return false;
-        // 排除小計、合計、總計
+        // 排除小計、合計、總計(雖然這些通常項次也不是數字,但雙重保險)
         if (name.includes('小計') || name.includes('合計') || name.includes('總計')) return false;
         if (mgmt.includes('小計') || mgmt.includes('合計') || mgmt.includes('總計')) return false;
         return true;
@@ -1615,7 +1618,10 @@ function tplSolarDashboard() {
             </div>
           </div>
           <div class="lg:col-span-2 rounded-xl border p-5" style="border-color:var(--border)">
-            <h3 class="text-sm font-bold mb-4">各管理處達成率（由低至高排序，可點擊深入查看）</h3>
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-sm font-bold">各管理處達成率（由低至高排序，可點擊深入查看）</h3>
+              <button class="icon-btn no-print" onclick="printFilteredView('solar-mgmt')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;padding:3px 8px;font-size:11px" title="開啟列印頁">🖨️ 列印</button>
+            </div>
             <div class="space-y-2.5">
               ${mgmtSorted.map(m => {
                 const color = m.achievement_pct >= 100 ? 'var(--success)' : (m.achievement_pct >= 50 ? 'var(--solar)' : (m.achievement_pct >= 20 ? 'var(--warning)' : 'var(--alert)'));
@@ -1678,6 +1684,7 @@ function tplCancelledList(cancelled) {
         </h3>
         <div class="flex items-center gap-1.5">
           ${['all', 112, 113, 114].map(y => `<button class="filter-btn ${String(state.cancelYear) === String(y) ? 'active' : ''}" onclick="setState({cancelYear:'${y}'})">${y === 'all' ? '全部' : y + '年'}</button>`).join('')}
+          <button class="icon-btn no-print" onclick="printFilteredView('cancelled')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;padding:4px 10px;font-size:12px" title="依目前年度篩選開啟列印頁">🖨️ 列印</button>
         </div>
       </div>
       <div class="space-y-1.5" style="max-height:${state.cancelExpanded ? '600px' : 'auto'};overflow-y:auto">
@@ -1702,6 +1709,7 @@ function tplSolarFilters() {
       <div class="flex items-center gap-2 flex-wrap">
         <div class="flex items-center gap-1.5">${ICON.search}<span class="text-xs font-medium" style="color:var(--ink-soft)">關鍵字</span></div>
         <input type="text" id="solar-search" placeholder="搜尋案場名稱或廠商..." value="${state.solar.search}" oninput="setFilter('solar.search', this.value)" style="flex:1;min-width:200px">
+        <button class="icon-btn no-print" onclick="printFilteredView('solar-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
       </div>
       <div class="flex items-start gap-4 flex-wrap">
         ${tplFilterGroup('管理處', state.solar.mgmt, ['桃園','石門','新竹','苗栗','臺中','南投','彰化','雲林','嘉南','高雄','屏東','宜蘭','花蓮','臺東'], 'solar.mgmt')}
@@ -1839,7 +1847,10 @@ function tplHydroDashboard() {
             <div style="position:relative;height:400px"><canvas id="chart-hydro-mgmt-cap"></canvas></div>
           </div>
           <div>
-            <h3 class="text-sm font-bold mb-3">各管理處案件數（含異常標示，可點擊）</h3>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold">各管理處案件數（含異常標示，可點擊）</h3>
+              <button class="icon-btn no-print" onclick="printFilteredView('hydro-mgmt')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;padding:3px 8px;font-size:11px" title="開啟列印頁">🖨️ 列印</button>
+            </div>
             <div class="space-y-2">
               ${mgmtSorted.map(m => `
                 <div class="mgmt-clickable rounded-lg border p-3" style="border-color:var(--border)" onclick="openMgmtModal('${m.name}')">
@@ -1885,6 +1896,7 @@ function tplHydroFilters() {
       <div class="flex items-center gap-2 flex-wrap">
         <div class="flex items-center gap-1.5">${ICON.search}<span class="text-xs font-medium" style="color:var(--ink-soft)">關鍵字</span></div>
         <input type="text" id="hydro-search" placeholder="搜尋案場名稱或廠商..." value="${state.hydro.search}" oninput="setFilter('hydro.search', this.value)" style="flex:1;min-width:200px">
+        <button class="icon-btn no-print" onclick="printFilteredView('hydro-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
       </div>
       <div class="flex items-start gap-4 flex-wrap">
         ${tplFilterGroup('管理處', state.hydro.mgmt, mgmts, 'hydro.mgmt')}
@@ -2526,6 +2538,194 @@ function printDashboard() {
     render();
   }
   setTimeout(() => window.print(), 300);
+}
+
+// ==================== 列印篩選後檢視 ====================
+// 開新視窗呈現篩選結果並列印
+function printFilteredView(target) {
+  let title = '';
+  let conditionParts = [];
+  let cardsHtml = '';
+  let countText = '';
+  
+  if (target === 'solar-sites') {
+    const f = state.solar;
+    const all = [
+      ...DATA.solar.completed_sites.map(s => ({...s, _stage: '已完工'})),
+      ...DATA.solar.construction_sites.map(s => ({...s, _stage: s.stage})),
+      ...DATA.solar.admin_sites.map(s => ({...s, _stage: '行政程序中'})),
+      ...DATA.solar.planning_sites.map(s => ({...s, _stage: '規劃推動'}))
+    ];
+    const filtered = all.filter(s => {
+      if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
+      if (f.type !== 'all' && s.type !== f.type) return false;
+      if (f.stage !== 'all' && s._stage !== f.stage) return false;
+      if (f.search && !(s.name||'').toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
+      return true;
+    });
+    title = '太陽光電案場層級檢視';
+    if (f.mgmt !== 'all') conditionParts.push(f.mgmt + '管理處');
+    if (f.type !== 'all') conditionParts.push(f.type);
+    if (f.stage !== 'all') conditionParts.push(f.stage);
+    if (f.search) conditionParts.push('關鍵字「' + f.search + '」');
+    countText = '共 ' + filtered.length + ' 案,合計 ' + filtered.reduce((a,c)=>a+(parseFloat(c.capacity_mw)||0),0).toFixed(2) + ' MW';
+    cardsHtml = filtered.length > 0 ? filtered.map(tplSolarCard).join('') : '<p style="text-align:center;padding:40px;color:#94a3b8">無符合條件的案場</p>';
+  } else if (target === 'hydro-sites') {
+    const f = state.hydro;
+    const filtered = DATA.hydro.sites.filter(s => {
+      if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
+      if (f.substage !== 'all' && s.substage !== f.substage) return false;
+      if (f.anomaly === 'red' && s.anomaly_level !== 'red') return false;
+      if (f.anomaly === 'yellow' && s.anomaly_level !== 'yellow') return false;
+      if (f.anomaly === 'none' && s.is_anomaly) return false;
+      if (f.search && !s.name.toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
+      return true;
+    });
+    title = '小水力案場層級檢視';
+    if (f.mgmt !== 'all') conditionParts.push(f.mgmt + '管理處');
+    if (f.substage !== 'all') conditionParts.push(f.substage);
+    if (f.anomaly === 'red') conditionParts.push('紅燈異常');
+    else if (f.anomaly === 'yellow') conditionParts.push('黃燈需追蹤');
+    else if (f.anomaly === 'none') conditionParts.push('正常案場');
+    if (f.search) conditionParts.push('關鍵字「' + f.search + '」');
+    countText = '共 ' + filtered.length + ' 案,合計 ' + filtered.reduce((a,c)=>a+(parseFloat(c.capacity_kw)||0),0).toFixed(2) + ' kW';
+    cardsHtml = filtered.length > 0 ? filtered.map(tplHydroCard).join('') : '<p style="text-align:center;padding:40px;color:#94a3b8">無符合條件的案場</p>';
+  } else if (target === 'cancelled') {
+    const all = DATA.solar.cancelled_sites;
+    const filtered = state.cancelYear === 'all' ? all : all.filter(c => c.year === parseInt(state.cancelYear));
+    title = '太陽光電解約／撤案／下修清單';
+    if (state.cancelYear !== 'all') conditionParts.push(state.cancelYear + '年度');
+    countText = '共 ' + filtered.length + ' 案,合計 ' + filtered.reduce((a,c)=>a+(parseFloat(c.capacity_mw)||0),0).toFixed(2) + ' MW';
+    // 解約用列表呈現(不是卡片)
+    cardsHtml = filtered.length > 0 ? `
+      <table class="cancel-table">
+        <thead>
+          <tr><th>年度</th><th>子類別</th><th>管理處</th><th>案場名稱</th><th>容量(MW)</th><th>原因</th><th>處理方式</th></tr>
+        </thead>
+        <tbody>
+          ${filtered.map(c => `
+            <tr>
+              <td>${c.year}年</td>
+              <td>${c.subcategory || ''}</td>
+              <td>${c.mgmt || ''}</td>
+              <td>${c.name || ''}</td>
+              <td style="text-align:right">${c.capacity_mw}</td>
+              <td>${c.reason || ''}</td>
+              <td>${c.handling || ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : '<p style="text-align:center;padding:40px;color:#94a3b8">無符合條件的資料</p>';
+  } else if (target === 'solar-mgmt') {
+    // 各管理處達成率(列表式)
+    const mgmts = DATA.solar.mgmt;
+    title = '太陽光電 - 各管理處達成率';
+    countText = '共 ' + mgmts.length + ' 個管理處';
+    cardsHtml = `
+      <table class="cancel-table">
+        <thead>
+          <tr><th>管理處</th><th>目標(MW)</th><th>已完工(MW)</th><th>達成率</th><th>施工中(MW)</th><th>行政中(MW)</th><th>規劃中(MW)</th><th>合計掌握(MW)</th></tr>
+        </thead>
+        <tbody>
+          ${mgmts.map(m => `
+            <tr>
+              <td><strong>${m.name}</strong></td>
+              <td style="text-align:right">${m.target_mw}</td>
+              <td style="text-align:right">${m.completed_mw.toFixed(2)}</td>
+              <td style="text-align:right;font-weight:600;color:${m.achievement_pct >= 100 ? '#059669' : m.achievement_pct >= 50 ? '#d97706' : '#dc2626'}">${m.achievement_pct}%</td>
+              <td style="text-align:right">${(m.construction_mw||0).toFixed(2)}</td>
+              <td style="text-align:right">${(m.admin_mw||0).toFixed(2)}</td>
+              <td style="text-align:right">${(m.planning_mw||0).toFixed(2)}</td>
+              <td style="text-align:right">${m.total_potential_mw.toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  } else if (target === 'hydro-mgmt') {
+    const mgmts = DATA.hydro.mgmt;
+    title = '小水力 - 各管理處統計';
+    countText = '共 ' + mgmts.length + ' 個管理處';
+    cardsHtml = `
+      <table class="cancel-table">
+        <thead>
+          <tr><th>管理處</th><th>總案數</th><th>總容量(kW)</th><th>已完工</th><th>完工容量</th><th>推動中</th><th>推動中容量</th><th>異常案數</th></tr>
+        </thead>
+        <tbody>
+          ${mgmts.map(m => `
+            <tr>
+              <td><strong>${m.name}</strong></td>
+              <td style="text-align:right">${m.cases}</td>
+              <td style="text-align:right">${m.capacity_kw.toFixed(2)}</td>
+              <td style="text-align:right">${m.completed_cases}</td>
+              <td style="text-align:right">${m.completed_kw.toFixed(2)}</td>
+              <td style="text-align:right">${m.in_progress_cases}</td>
+              <td style="text-align:right">${m.in_progress_kw.toFixed(2)}</td>
+              <td style="text-align:right;color:${m.anomaly_cases > 0 ? '#dc2626' : 'inherit'}">${m.anomaly_cases}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+  
+  const conditionText = conditionParts.length > 0 ? conditionParts.join(' / ') : '全部資料(未篩選)';
+  
+  // 從目前畫面 cloning style 過去
+  const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(s => s.outerHTML).join('\n');
+  
+  const html = `<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>${title} - 列印</title>
+${styleTags}
+<style>
+  body { margin: 0; padding: 20px; background: white; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", "PingFang TC", sans-serif; }
+  .print-header { border-bottom: 3px solid #1e293b; padding-bottom: 12px; margin-bottom: 16px; }
+  .print-header h1 { margin: 0 0 6px 0; font-size: 22px; font-weight: 700; color: #0f172a; }
+  .print-header .condition { font-size: 14px; color: #334155; margin: 4px 0; }
+  .print-header .meta { font-size: 11px; color: #64748b; display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+  .print-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .print-cards > * { break-inside: avoid; page-break-inside: avoid; }
+  .cancel-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .cancel-table th, .cancel-table td { border: 1px solid #cbd5e1; padding: 4px 8px; }
+  .cancel-table th { background: #f1f5f9; font-weight: 600; }
+  .cancel-table tr { page-break-inside: avoid; }
+  .print-actions { margin-bottom: 16px; }
+  .print-actions button { padding: 8px 16px; margin-right: 8px; cursor: pointer; border: 1px solid #cbd5e1; background: white; border-radius: 6px; font-size: 13px; }
+  .print-actions button.primary { background: #1e293b; color: white; border-color: #1e293b; }
+  @media print {
+    .print-actions { display: none !important; }
+    body { padding: 12px; }
+    .print-cards { gap: 6px; }
+  }
+  @page { size: A4; margin: 12mm; }
+</style>
+</head>
+<body>
+  <div class="print-actions">
+    <button class="primary" onclick="window.print()">🖨️ 列印</button>
+    <button onclick="window.close()">關閉</button>
+  </div>
+  <div class="print-header">
+    <h1>${title}</h1>
+    <div class="condition"><strong>篩選條件:</strong> ${conditionText}</div>
+    <div class="meta">
+      <span>📊 ${countText}</span>
+      <span>📅 資料日期:${DATA.updated_at}</span>
+      <span>🖨️ 列印時間:${new Date().toLocaleString('zh-TW')}</span>
+    </div>
+  </div>
+  <div class="print-cards">${cardsHtml}</div>
+</body>
+</html>`;
+  
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if (!w) {
+    alert('無法開啟新視窗,請允許瀏覽器彈出視窗');
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
 }
 
 async function exportPNG(sectionId, filename) {
