@@ -165,6 +165,334 @@ const ORIGINAL_DATA = {"updated_at":"2026-05-14","solar":{"summary":{"total_comp
 
 // ==================== 資料持久化 (新增) ====================
 const STORAGE_KEY = 'dashboard_data_v1';
+const OPINION_KEY = 'dashboard_opinion_v1';   // 輿情監控資料
+
+// ==================== 輿情監控功能 ====================
+// loadOpinions / saveOpinions 支援 tab 分流 (solar/hydro)
+// 為向後相容:若舊資料是 array,自動遷移到 solar
+function loadAllOpinions() {
+  try {
+    const s = localStorage.getItem(OPINION_KEY);
+    if (!s) return { solar: [], hydro: [] };
+    const parsed = JSON.parse(s);
+    // 舊版資料(array)→ 遷移成 solar
+    if (Array.isArray(parsed)) {
+      const migrated = { solar: parsed, hydro: [] };
+      localStorage.setItem(OPINION_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+    return { solar: parsed.solar || [], hydro: parsed.hydro || [] };
+  } catch(e) { return { solar: [], hydro: [] }; }
+}
+
+function loadOpinions(tab) {
+  const tabKey = tab || state.tab || 'solar';
+  return loadAllOpinions()[tabKey] || [];
+}
+
+function saveOpinions(arr, tab) {
+  const tabKey = tab || state.tab || 'solar';
+  const all = loadAllOpinions();
+  all[tabKey] = arr;
+  try {
+    localStorage.setItem(OPINION_KEY, JSON.stringify(all));
+    return true;
+  } catch(e) {
+    alert('儲存失敗:可能超過 localStorage 容量(5MB)。請刪除部分 PDF 後重試。');
+    return false;
+  }
+}
+
+// 狀態定義
+const OPINION_STATUSES = {
+  unhandled: { label: '未處理', color: '#dc2626', bg: '#fef2f2' },
+  in_progress: { label: '結果追蹤中', color: '#d97706', bg: '#fef3c7' },
+  clarified: { label: '已澄清', color: '#059669', bg: '#ecfdf5' },
+  closed: { label: '已關閉', color: '#6b7280', bg: '#f1f5f9' }
+};
+
+// 嚴重程度
+const OPINION_SEVERITIES = {
+  high: { label: '🔴 高度關注', color: '#991b1b' },
+  medium: { label: '🟡 中度關注', color: '#92400e' },
+  low: { label: '🔵 一般關注', color: '#1e40af' }
+};
+
+// ===== case_ref 選項清單生成 =====
+// 回傳格式: [{ group: '群組名', options: [{value, label, meta}] }]
+function getCaseRefOptions(tab) {
+  const groups = [];
+  if (tab === 'solar') {
+    const stages = [
+      { key: 'completed_sites', label: '已完工案場' },
+      { key: 'construction_sites', label: '施工/待施工/停工中' },
+      { key: 'admin_sites', label: '行政程序中' },
+      { key: 'planning_sites', label: '規劃推動/招商中' },
+      { key: 'cancelled_sites', label: '解約/撤案' }
+    ];
+    stages.forEach(s => {
+      const rows = DATA.solar[s.key] || [];
+      if (rows.length === 0) return;
+      groups.push({
+        group: '太陽光電 - ' + s.label,
+        options: rows.map((r, idx) => ({
+          value: 'solar:' + s.key + ':' + idx,
+          label: r.name || '(無名稱)',
+          meta: { mgmt: r.mgmt, capacity: r.capacity_mw }
+        }))
+      });
+    });
+    // 管理處(去重)
+    const mgmts = [...new Set((DATA.solar.completed_sites || [])
+      .concat(DATA.solar.construction_sites || [])
+      .concat(DATA.solar.admin_sites || [])
+      .concat(DATA.solar.planning_sites || [])
+      .map(r => r.mgmt).filter(Boolean))];
+    if (mgmts.length) {
+      groups.push({
+        group: '太陽光電 - 管理處',
+        options: mgmts.sort().map(m => ({
+          value: 'solar:mgmt:' + m,
+          label: m + '管理處',
+          meta: {}
+        }))
+      });
+    }
+  } else {
+    // 小水力
+    const sites = DATA.hydro.sites || [];
+    if (sites.length) {
+      groups.push({
+        group: '小水力 - 案場',
+        options: sites.map((r, idx) => ({
+          value: 'hydro:sites:' + idx,
+          label: r.name || '(無名稱)',
+          meta: { mgmt: r.mgmt, capacity: r.capacity_kw }
+        }))
+      });
+    }
+    const mgmts = [...new Set(sites.map(r => r.mgmt).filter(Boolean))];
+    if (mgmts.length) {
+      groups.push({
+        group: '小水力 - 管理處',
+        options: mgmts.sort().map(m => ({
+          value: 'hydro:mgmt:' + m,
+          label: m + '管理處',
+          meta: {}
+        }))
+      });
+    }
+  }
+  return groups;
+}
+
+// ===== 從 case_ref 解析回完整案場資訊 =====
+// case_ref 格式: 'solar:completed_sites:5' 或 'solar:mgmt:嘉南'
+function resolveCaseRef(caseRef) {
+  if (!caseRef || typeof caseRef !== 'string') return null;
+  const parts = caseRef.split(':');
+  if (parts.length < 3) return null;
+  const [category, kind, key] = parts;
+  
+  if (kind === 'mgmt') {
+    // 管理處關聯:回傳該管理處的彙整資訊
+    if (category === 'solar') {
+      const m = (DATA.solar.mgmt || []).find(x => x.name === key);
+      if (!m) return { type: 'mgmt', category, name: key + '管理處', notFound: true };
+      return {
+        type: 'mgmt', category, name: key + '管理處',
+        target_mw: m.target_mw,
+        completed_mw: m.completed_mw,
+        achievement_pct: m.achievement_pct,
+        total_potential_mw: m.total_potential_mw
+      };
+    } else {
+      const m = (DATA.hydro.mgmt || []).find(x => x.name === key);
+      if (!m) return { type: 'mgmt', category, name: key + '管理處', notFound: true };
+      return {
+        type: 'mgmt', category, name: key + '管理處',
+        cases: m.cases,
+        capacity_kw: m.capacity_kw,
+        completed_cases: m.completed_cases,
+        in_progress_cases: m.in_progress_cases,
+        anomaly_cases: m.anomaly_cases
+      };
+    }
+  }
+  
+  // 案場關聯
+  const idx = parseInt(key);
+  let row;
+  if (category === 'solar') {
+    row = (DATA.solar[kind] || [])[idx];
+  } else if (category === 'hydro') {
+    row = (DATA.hydro[kind] || [])[idx];
+  }
+  if (!row) return { type: 'site', category, kind, idx, notFound: true };
+  
+  return { type: 'site', category, kind, idx, row };
+}
+
+// 取 stage 中文標籤(從 site 推算)
+function getSiteStageLabel(kind) {
+  return ({
+    completed_sites: '已完工',
+    construction_sites: '施工中/待施工',
+    admin_sites: '行政程序中',
+    planning_sites: '規劃推動/招商中',
+    cancelled_sites: '解約/撤案',
+    sites: '小水力案場'
+  })[kind] || kind;
+}
+
+// ===== 渲染:案場資訊內嵌區塊 =====
+function tplCaseRefEmbed(caseRef) {
+  if (!caseRef) return '';
+  const info = resolveCaseRef(caseRef);
+  if (!info) return '';
+  
+  if (info.notFound) {
+    return `
+      <div class="rounded-lg p-3 mt-2" style="background:#fef3c7;border:1px solid #f59e0b">
+        <p class="text-xs" style="color:#92400e">⚠️ 關聯資料已不存在於目前資料庫中 (${caseRef})</p>
+      </div>
+    `;
+  }
+  
+  if (info.type === 'mgmt') {
+    // 管理處關聯
+    if (info.category === 'solar') {
+      const pct = info.achievement_pct || 0;
+      const pctColor = pct >= 100 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626';
+      return `
+        <div class="rounded-lg p-3 mt-2" style="background:#f0f9ff;border:1px solid #0ea5e9">
+          <p class="text-xs font-bold mb-2" style="color:#075985">🏢 關聯管理處資訊</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div><span style="color:#0369a1">管理處:</span><strong> ${info.name}</strong></div>
+            <div><span style="color:#0369a1">目標:</span><strong> ${info.target_mw} MW</strong></div>
+            <div><span style="color:#0369a1">已完工:</span><strong> ${(info.completed_mw||0).toFixed(2)} MW</strong></div>
+            <div><span style="color:#0369a1">達成率:</span><strong style="color:${pctColor}"> ${pct}%</strong></div>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="rounded-lg p-3 mt-2" style="background:#f0f9ff;border:1px solid #0ea5e9">
+          <p class="text-xs font-bold mb-2" style="color:#075985">🏢 關聯管理處資訊</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div><span style="color:#0369a1">管理處:</span><strong> ${info.name}</strong></div>
+            <div><span style="color:#0369a1">總案數:</span><strong> ${info.cases||0}</strong></div>
+            <div><span style="color:#0369a1">總容量:</span><strong> ${(info.capacity_kw||0).toFixed(1)} kW</strong></div>
+            <div><span style="color:#0369a1">已完工:</span><strong> ${info.completed_cases||0} / 推動中 ${info.in_progress_cases||0}</strong>${info.anomaly_cases > 0 ? ' <span style="color:#dc2626">⚠️異常 ' + info.anomaly_cases + '</span>' : ''}</div>
+          </div>
+        </div>
+      `;
+    }
+  }
+  
+  // 案場關聯
+  const r = info.row;
+  const stage = info.kind === 'sites'
+    ? (r.stage || '') + (r.substage ? ' / ' + r.substage : '')
+    : getSiteStageLabel(info.kind);
+  
+  if (info.category === 'solar') {
+    return `
+      <div class="rounded-lg p-3 mt-2" style="background:#f0f9ff;border:1px solid #0ea5e9">
+        <p class="text-xs font-bold mb-2" style="color:#075985">📍 關聯案場資訊</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-1 text-xs" style="color:#1e293b">
+          <div><span style="color:#0369a1">案場名稱:</span> <strong>${r.name||'-'}</strong></div>
+          <div><span style="color:#0369a1">階段:</span> <strong style="color:${(r.stage==='已完工'?'#059669':'#0891b2')}">${r.stage || stage}</strong></div>
+          <div><span style="color:#0369a1">管理處:</span> <strong>${r.mgmt||'-'}</strong></div>
+          <div><span style="color:#0369a1">縣市:</span> <strong>${r.county||'-'}</strong></div>
+          <div><span style="color:#0369a1">類型:</span> <strong>${r.type||'-'}</strong></div>
+          <div><span style="color:#0369a1">容量:</span> <strong>${r.capacity_mw != null ? r.capacity_mw + ' MW' : '-'}</strong></div>
+          <div class="md:col-span-2"><span style="color:#0369a1">廠商:</span> <strong>${r.vendor||'-'}</strong></div>
+          ${r.grid_date ? `<div><span style="color:#0369a1">併網日:</span> <strong>${String(r.grid_date).replace(/\n/g,', ')}</strong></div>` : ''}
+          ${r.expected_date ? `<div><span style="color:#0369a1">預計完工:</span> <strong>${r.expected_date}</strong></div>` : ''}
+          ${r.progress ? `<div class="md:col-span-2"><span style="color:#0369a1">辦理進度:</span> <strong>${r.progress}</strong></div>` : ''}
+          ${r.reason ? `<div class="md:col-span-2"><span style="color:#0369a1">原因:</span> <strong style="color:#991b1b">${r.reason}</strong></div>` : ''}
+          ${r.handling ? `<div class="md:col-span-2"><span style="color:#0369a1">處理方式:</span> <strong>${r.handling}</strong></div>` : ''}
+        </div>
+      </div>
+    `;
+  } else {
+    // 小水力案場
+    return `
+      <div class="rounded-lg p-3 mt-2" style="background:#f0f9ff;border:1px solid #0ea5e9">
+        <p class="text-xs font-bold mb-2" style="color:#075985">📍 關聯案場資訊</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-1 text-xs" style="color:#1e293b">
+          <div><span style="color:#0369a1">案場名稱:</span> <strong>${r.name||'-'}</strong></div>
+          <div><span style="color:#0369a1">階段:</span> <strong>${stage}</strong></div>
+          <div><span style="color:#0369a1">管理處:</span> <strong>${r.mgmt||'-'}</strong></div>
+          <div><span style="color:#0369a1">縣市/鄉鎮:</span> <strong>${r.county||'-'}${r.township?' / '+r.township:''}</strong></div>
+          <div><span style="color:#0369a1">容量:</span> <strong>${r.capacity_kw != null ? r.capacity_kw + ' kW' : '-'}</strong></div>
+          <div><span style="color:#0369a1">完工年度:</span> <strong>${r.year||'-'}</strong></div>
+          <div class="md:col-span-2"><span style="color:#0369a1">廠商:</span> <strong>${r.vendor || '-'}</strong></div>
+          ${r.operation ? `<div class="md:col-span-2"><span style="color:#0369a1">辦理情形:</span> <strong>${String(r.operation).replace(/\n/g,' ')}</strong></div>` : ''}
+          ${r.is_anomaly ? `<div class="md:col-span-2"><span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;font-weight:600">⚠️ 異常標記:${r.anomaly_type || '異常'}</span></div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+}
+
+
+// 嘗試從 URL 抓取網頁標題(會被 CORS 擋,失敗就放手讓使用者手動填)
+async function fetchUrlTitle(url) {
+  // 使用 allorigins 公開 CORS proxy 作為 fallback
+  const proxies = [
+    'https://api.allorigins.win/get?url=' + encodeURIComponent(url),
+    'https://corsproxy.io/?' + encodeURIComponent(url)
+  ];
+  for (const proxyUrl of proxies) {
+    try {
+      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) continue;
+      const data = await resp.json().catch(() => null);
+      const html = data?.contents || (typeof data === 'string' ? data : '');
+      if (!html) continue;
+      // 找 <title>...</title> 或 og:title
+      const ogMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+      if (ogMatch && ogMatch[1]) return ogMatch[1].trim();
+      const tMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      if (tMatch && tMatch[1]) return tMatch[1].trim();
+    } catch(e) { /* 試下一個 proxy */ }
+  }
+  return null; // 全失敗,讓使用者手動填
+}
+
+// 上傳 PDF -> base64
+function pdfToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result); // data:application/pdf;base64,...
+    r.onerror = () => reject(new Error('讀取失敗'));
+    r.readAsDataURL(file);
+  });
+}
+
+// 開啟 PDF (base64)
+function openPdfBase64(base64Data, filename) {
+  // base64 -> Blob -> URL
+  const arr = base64Data.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  const u8 = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
+  const blob = new Blob([u8], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  if (!w) {
+    // 彈出視窗被擋,改用下載
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'document.pdf';
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 const PREV_KEY = 'dashboard_prev_v1';      // 上一版快照
 const DIFF_KEY = 'dashboard_diff_v1';      // 最近一次匯入的 diff 摘要
 
@@ -976,6 +1304,553 @@ function cancelImport() {
   render();
 }
 
+// ==================== 輿情監控區塊模板 ====================
+function tplOpinionSection() {
+  const opinions = loadOpinions(state.tab);
+  const tabLabel = state.tab === 'solar' ? '太陽光電' : '小水力';
+  
+  return `
+    <section id="sec-opinion" class="section-card" style="border: 2px solid #f59e0b; background: linear-gradient(to right, #fffbeb, #fff7ed);">
+      <div class="px-6 py-4">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div>
+            <p class="text-xs font-medium uppercase mb-1" style="color:#92400e;letter-spacing:0.1em">PUBLIC OPINION MONITOR · ${state.tab.toUpperCase()}</p>
+            <h2 class="text-xl font-bold font-serif-tc" style="color:#78350f">📢 ${tabLabel}輿情監控</h2>
+            <p class="text-xs mt-1" style="color:#92400e">負面輿論與我方澄清資料並列追蹤,提供長官即時掌握</p>
+          </div>
+          <button class="icon-btn no-print" 
+                  style="background:#f59e0b;color:white;border-color:#d97706;font-weight:600"
+                  onclick="state.opinionEditor = { mode: 'create' }; render();">
+            ➕ 新增${tabLabel}輿情事件
+          </button>
+        </div>
+        
+        ${opinions.length === 0 ? `
+          <div class="text-center py-8" style="color:#92400e">
+            <p class="text-sm">目前尚無輿情事件記錄</p>
+            <p class="text-xs mt-1">點選右上方「➕ 新增輿情事件」開始建立</p>
+          </div>
+        ` : opinions.map(op => tplOpinionCard(op)).join('')}
+      </div>
+    </section>
+  `;
+}
+
+// 單一輿情事件卡片
+function tplOpinionCard(op) {
+  const status = OPINION_STATUSES[op.status] || OPINION_STATUSES.unhandled;
+  const severity = OPINION_SEVERITIES[op.severity] || OPINION_SEVERITIES.medium;
+  const isOpen = state.opinionCollapsed[op.id] !== true;  // 預設展開
+  
+  // 解析 case_ref 取得顯示用 label
+  let caseRefLabel = '';
+  let caseRefInfo = null;
+  if (op.case_ref) {
+    // 新格式:結構化 id 字串(含 ':')
+    if (typeof op.case_ref === 'string' && op.case_ref.includes(':')) {
+      caseRefInfo = resolveCaseRef(op.case_ref);
+      if (caseRefInfo && !caseRefInfo.notFound) {
+        if (caseRefInfo.type === 'mgmt') {
+          caseRefLabel = caseRefInfo.name;
+        } else {
+          caseRefLabel = caseRefInfo.row.name || '(無名稱)';
+        }
+      } else {
+        caseRefLabel = '(資料已不存在)';
+      }
+    } else {
+      // 舊格式:純文字(向後相容)
+      caseRefLabel = op.case_ref;
+    }
+  }
+  
+  return `
+    <div class="rounded-xl mb-3 overflow-hidden" style="background:white; border:1px solid #fbbf24">
+      <!-- 標頭 -->
+      <div class="px-4 py-3" style="background:#fef3c7; border-bottom:1px solid #fbbf24">
+        <div class="flex items-start justify-between flex-wrap gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-sm font-bold" style="color:${severity.color}">${severity.label}</span>
+              <span class="text-xs px-2 py-0.5 rounded-full" style="background:${status.bg};color:${status.color};border:1px solid ${status.color}">${status.label}</span>
+              ${caseRefLabel ? `<span class="text-xs px-2 py-0.5 rounded-full" style="background:#e0e7ff;color:#3730a3">📍 ${caseRefLabel}</span>` : ''}
+            </div>
+            <h3 class="text-base font-bold mt-1" style="color:#78350f">${op.title}</h3>
+            ${op.summary ? `<p class="text-xs mt-1" style="color:#92400e;line-height:1.4">${op.summary}</p>` : ''}
+            <p class="text-xs mt-1" style="color:#a16207">
+              建立:${op.created_at || '-'}${op.updated_at && op.updated_at !== op.created_at ? ' ・ 更新:' + op.updated_at : ''}
+              ・ 負面 ${(op.negative||[]).length} 筆 / 澄清 ${(op.clarification||[]).length} 筆
+            </p>
+          </div>
+          <div class="flex gap-1 no-print">
+            <button class="icon-btn" style="padding:3px 8px;font-size:11px"
+                    onclick="state.opinionCollapsed['${op.id}'] = ${isOpen}; render();">
+              ${isOpen ? '收合 ▲' : '展開 ▼'}
+            </button>
+            <button class="icon-btn" style="padding:3px 8px;font-size:11px"
+                    onclick="state.opinionEditor = { mode:'edit', oid: '${op.id}' }; render();">
+              ✏️ 編輯
+            </button>
+            <button class="icon-btn" style="padding:3px 8px;font-size:11px;background:#fee2e2;color:#991b1b;border-color:#dc2626"
+                    onclick="deleteOpinion('${op.id}')">
+              🗑️ 刪除
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      ${isOpen ? `
+        <!-- 案場/管理處資訊內嵌(若有關聯) -->
+        ${op.case_ref ? `<div class="px-4 pt-3">${tplCaseRefEmbed(op.case_ref)}</div>` : ''}
+        
+        <!-- 雙欄並排:負面 vs 澄清 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4">
+          <!-- 負面 -->
+          <div class="rounded-lg" style="background:#fef2f2;border:1px solid #ef4444">
+            <div class="px-3 py-2 flex items-center justify-between" style="background:#fee2e2;border-bottom:1px solid #ef4444">
+              <div class="font-bold text-sm" style="color:#991b1b">⚠️ 負面輿論 / 攻擊言論</div>
+              <button class="icon-btn no-print" style="padding:2px 8px;font-size:10px;background:white;color:#991b1b;border-color:#ef4444"
+                      onclick="state.opinionSourceEditor = { oid:'${op.id}', side:'negative', mode:'add' }; render();">
+                ➕ 新增
+              </button>
+            </div>
+            <div class="p-3 space-y-2">
+              ${(op.negative || []).length === 0 ? `<p class="text-xs text-center py-3" style="color:#dc2626">尚未新增負面來源</p>` :
+                op.negative.map(src => tplOpinionSourceItem(op.id, 'negative', src)).join('')}
+            </div>
+          </div>
+          
+          <!-- 澄清 -->
+          <div class="rounded-lg" style="background:#ecfdf5;border:1px solid #10b981">
+            <div class="px-3 py-2 flex items-center justify-between" style="background:#d1fae5;border-bottom:1px solid #10b981">
+              <div class="font-bold text-sm" style="color:#065f46">✅ 我方澄清 / 事實依據</div>
+              <button class="icon-btn no-print" style="padding:2px 8px;font-size:10px;background:white;color:#065f46;border-color:#10b981"
+                      onclick="state.opinionSourceEditor = { oid:'${op.id}', side:'clarification', mode:'add' }; render();">
+                ➕ 新增
+              </button>
+            </div>
+            <div class="p-3 space-y-2">
+              ${(op.clarification || []).length === 0 ? `<p class="text-xs text-center py-3" style="color:#059669">尚未新增澄清資料</p>` :
+                op.clarification.map(src => tplOpinionSourceItem(op.id, 'clarification', src)).join('')}
+            </div>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+// 單一來源項目(URL 或 PDF)
+function tplOpinionSourceItem(oid, side, src) {
+  const sideColor = side === 'negative' ? '#dc2626' : '#059669';
+  const sideBg = side === 'negative' ? 'white' : 'white';
+  
+  if (src.type === 'url') {
+    return `
+      <div class="rounded p-2" style="background:${sideBg};border:1px solid #e5e7eb">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-xs px-1.5 py-0.5 rounded" style="background:#dbeafe;color:#1e40af">🔗 URL</span>
+              ${src.source ? `<span class="text-xs" style="color:#6b7280">${src.source}</span>` : ''}
+              ${src.date ? `<span class="text-xs" style="color:#6b7280">・${src.date}</span>` : ''}
+            </div>
+            <a href="${src.url}" target="_blank" rel="noopener noreferrer" 
+               class="block text-sm font-medium mt-1 hover:underline" 
+               style="color:${sideColor};word-break:break-word">
+              ${src.title || src.url}
+            </a>
+            ${src.excerpt ? `<p class="text-xs mt-1" style="color:#4b5563;line-height:1.4">${src.excerpt}</p>` : ''}
+          </div>
+          <div class="flex flex-col gap-1 no-print">
+            <button class="icon-btn" style="padding:2px 6px;font-size:10px"
+                    onclick="state.opinionSourceEditor = { oid:'${oid}', side:'${side}', sid:'${src.id}', mode:'edit' }; render();">✏️</button>
+            <button class="icon-btn" style="padding:2px 6px;font-size:10px;color:#991b1b"
+                    onclick="deleteOpinionSource('${oid}', '${side}', '${src.id}')">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    // PDF
+    return `
+      <div class="rounded p-2" style="background:${sideBg};border:1px solid #e5e7eb">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-xs px-1.5 py-0.5 rounded" style="background:#fce7f3;color:#9f1239">📎 PDF</span>
+              ${src.filename ? `<span class="text-xs" style="color:#6b7280">${src.filename}</span>` : ''}
+              ${src.date ? `<span class="text-xs" style="color:#6b7280">・${src.date}</span>` : ''}
+            </div>
+            <div class="text-sm font-medium mt-1" style="color:${sideColor}">${src.title || '(未命名)'}</div>
+            ${src.excerpt ? `<p class="text-xs mt-1" style="color:#4b5563;line-height:1.4">${src.excerpt}</p>` : ''}
+            <button class="text-xs underline mt-1 no-print" style="color:${sideColor}"
+                    onclick="openOpinionPdf('${oid}','${side}','${src.id}')">📖 開啟 PDF</button>
+          </div>
+          <div class="flex flex-col gap-1 no-print">
+            <button class="icon-btn" style="padding:2px 6px;font-size:10px"
+                    onclick="state.opinionSourceEditor = { oid:'${oid}', side:'${side}', sid:'${src.id}', mode:'edit' }; render();">✏️</button>
+            <button class="icon-btn" style="padding:2px 6px;font-size:10px;color:#991b1b"
+                    onclick="deleteOpinionSource('${oid}', '${side}', '${src.id}')">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// ==================== 輿情事件 Modal ====================
+function tplOpinionEditorModal() {
+  const e = state.opinionEditor;
+  if (!e) return '';
+  const opinions = loadOpinions();
+  const op = e.mode === 'edit' ? opinions.find(x => x.id === e.oid) : {
+    id: 'po_' + Date.now(),
+    title: '', case_ref: '', severity: 'medium', status: 'unhandled',
+    summary: '',
+    created_at: new Date().toISOString().substring(0,10),
+    updated_at: new Date().toISOString().substring(0,10),
+    negative: [], clarification: []
+  };
+  if (!op) return '';
+  
+  return `
+    <div class="modal-backdrop" onclick="if(event.target===this){state.opinionEditor=null;render();}">
+      <div class="modal-content" style="max-width:600px;max-height:85vh;overflow:auto">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between" style="border-color:var(--border);z-index:1">
+          <h3 class="text-lg font-bold">${e.mode === 'create' ? '➕ 新增輿情事件' : '✏️ 編輯輿情事件'}</h3>
+          <button class="icon-btn" onclick="state.opinionEditor=null;render();">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">事件標題 *</label>
+            <input type="text" id="op-title" value="${op.title.replace(/"/g,'&quot;')}" placeholder="例:嘉南-烏山頭水庫太陽能板觸底事件" style="width:100%">
+          </div>
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">關聯案場 / 管理處(選填)</label>
+            <div class="flex gap-2 items-start">
+              <input type="text" id="op-case-ref-search" placeholder="🔍 輸入關鍵字篩選(案場名/管理處)..." style="flex:1" 
+                     oninput="filterCaseRefDropdown(this.value)">
+            </div>
+            <select id="op-case-ref" style="width:100%;margin-top:6px;max-height:200px">
+              <option value="">— 不關聯 —</option>
+              ${(()=>{
+                const tab = state.tab || 'solar';
+                const groups = getCaseRefOptions(tab);
+                const currentVal = (op.case_ref && typeof op.case_ref === 'string' && op.case_ref.includes(':')) ? op.case_ref : '';
+                let html = '';
+                groups.forEach(g => {
+                  html += `<optgroup label="${g.group}">`;
+                  g.options.forEach(o => {
+                    const sel = (o.value === currentVal) ? ' selected' : '';
+                    const metaStr = o.meta && (o.meta.mgmt || o.meta.capacity != null) 
+                      ? ` (${[o.meta.mgmt, o.meta.capacity != null ? o.meta.capacity + (tab==='solar'?'MW':'kW') : ''].filter(Boolean).join(', ')})` 
+                      : '';
+                    html += `<option value="${o.value}"${sel}>${o.label}${metaStr}</option>`;
+                  });
+                  html += '</optgroup>';
+                });
+                return html;
+              })()}
+            </select>
+            ${op.case_ref && typeof op.case_ref === 'string' && !op.case_ref.includes(':') ? `
+              <p class="text-xs mt-2 px-2 py-1 rounded" style="background:#fef3c7;color:#92400e">
+                ⚠️ 現有關聯為舊版文字格式:「${op.case_ref}」<br>
+                請從上方下拉選單重新選擇(以便顯示完整案場資訊)
+              </p>
+            ` : ''}
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">嚴重程度</label>
+              <select id="op-severity" style="width:100%">
+                <option value="high" ${op.severity==='high'?'selected':''}>🔴 高度關注</option>
+                <option value="medium" ${op.severity==='medium'?'selected':''}>🟡 中度關注</option>
+                <option value="low" ${op.severity==='low'?'selected':''}>🔵 一般關注</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">處理狀態</label>
+              <select id="op-status" style="width:100%">
+                <option value="unhandled" ${op.status==='unhandled'?'selected':''}>未處理</option>
+                <option value="in_progress" ${op.status==='in_progress'?'selected':''}>結果追蹤中</option>
+                <option value="clarified" ${op.status==='clarified'?'selected':''}>已澄清</option>
+                <option value="closed" ${op.status==='closed'?'selected':''}>已關閉</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">事件摘要</label>
+            <textarea id="op-summary" rows="3" placeholder="簡述事件背景與關鍵爭點..." style="width:100%;resize:vertical">${op.summary || ''}</textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">建立日期</label>
+              <input type="date" id="op-created" value="${op.created_at || ''}" style="width:100%">
+            </div>
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">最後更新</label>
+              <input type="date" id="op-updated" value="${op.updated_at || ''}" style="width:100%">
+            </div>
+          </div>
+        </div>
+        <div class="sticky bottom-0 bg-white border-t px-6 py-3 flex justify-end gap-2" style="border-color:var(--border)">
+          <button class="icon-btn" onclick="state.opinionEditor=null;render();">取消</button>
+          <button class="icon-btn" style="background:#f59e0b;color:white;border-color:#d97706" onclick="saveOpinionFromModal('${op.id}', '${e.mode}')">${e.mode==='create'?'建立':'儲存'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// 來源編輯 Modal (URL or PDF)
+function tplOpinionSourceEditorModal() {
+  const e = state.opinionSourceEditor;
+  if (!e) return '';
+  const opinions = loadOpinions();
+  const op = opinions.find(x => x.id === e.oid);
+  if (!op) return '';
+  
+  const list = e.side === 'negative' ? (op.negative||[]) : (op.clarification||[]);
+  const src = e.mode === 'edit' ? list.find(s => s.id === e.sid) : { 
+    id: 'src_' + Date.now(), 
+    type: 'url', url: '', title: '', excerpt: '', source: '', date: new Date().toISOString().substring(0,10) 
+  };
+  if (!src) return '';
+  
+  const sideLabel = e.side === 'negative' ? '負面輿論' : '我方澄清';
+  const sideColor = e.side === 'negative' ? '#dc2626' : '#059669';
+  
+  return `
+    <div class="modal-backdrop" onclick="if(event.target===this){state.opinionSourceEditor=null;render();}">
+      <div class="modal-content" style="max-width:600px;max-height:85vh;overflow:auto">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between" style="border-color:var(--border);z-index:1">
+          <h3 class="text-lg font-bold" style="color:${sideColor}">${e.mode==='add'?'➕ 新增':'✏️ 編輯'}${sideLabel}來源</h3>
+          <button class="icon-btn" onclick="state.opinionSourceEditor=null;render();">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">類型</label>
+            <div class="flex gap-2">
+              <button class="filter-btn ${src.type==='url'?'active':''}" onclick="state.opinionSourceEditor._draftType='url';document.querySelectorAll('#src-type-fields > div').forEach(d=>d.style.display='none');document.getElementById('src-url-fields').style.display='block';this.classList.add('active');this.nextElementSibling.classList.remove('active');" type="button">🔗 URL 連結</button>
+              <button class="filter-btn ${src.type==='pdf'?'active':''}" onclick="state.opinionSourceEditor._draftType='pdf';document.querySelectorAll('#src-type-fields > div').forEach(d=>d.style.display='none');document.getElementById('src-pdf-fields').style.display='block';this.classList.add('active');this.previousElementSibling.classList.remove('active');" type="button">📎 PDF 檔案</button>
+            </div>
+          </div>
+          
+          <div id="src-type-fields">
+            <!-- URL 欄位 -->
+            <div id="src-url-fields" style="display:${src.type==='url'?'block':'none'}">
+              <div class="space-y-3">
+                <div>
+                  <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">網址 *</label>
+                  <div class="flex gap-2">
+                    <input type="url" id="src-url" value="${(src.url||'').replace(/"/g,'&quot;')}" placeholder="https://..." style="flex:1">
+                    <button type="button" class="icon-btn" onclick="autoFetchTitle()">🔍 自動抓標題</button>
+                  </div>
+                  <p class="text-xs mt-1" style="color:#6b7280">提示:Facebook、Instagram 等社群網站常因 CORS 政策無法自動抓取,需手動填寫</p>
+                </div>
+              </div>
+            </div>
+            <!-- PDF 欄位 -->
+            <div id="src-pdf-fields" style="display:${src.type==='pdf'?'block':'none'}">
+              <div class="space-y-3">
+                <div>
+                  <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">PDF 檔案 ${src.filename ? '(已上傳:' + src.filename + ')' : '*'}</label>
+                  <input type="file" id="src-pdf-file" accept=".pdf,application/pdf">
+                  <p class="text-xs mt-1" style="color:#6b7280">提示:單檔建議 < 2MB(localStorage 容量上限 5MB,過多 PDF 會儲存失敗)</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">標題 *</label>
+            <input type="text" id="src-title" value="${(src.title||'').replace(/"/g,'&quot;')}" placeholder="例:江明宗 FB 貼文" style="width:100%">
+          </div>
+          <div>
+            <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">重點摘要</label>
+            <textarea id="src-excerpt" rows="4" placeholder="重點摘要、攻擊論點、關鍵內容..." style="width:100%;resize:vertical">${src.excerpt || ''}</textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">來源(選填)</label>
+              <input type="text" id="src-source" value="${(src.source||'').replace(/"/g,'&quot;')}" placeholder="例:Facebook、聯合報" style="width:100%">
+            </div>
+            <div>
+              <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">日期</label>
+              <input type="date" id="src-date" value="${src.date || ''}" style="width:100%">
+            </div>
+          </div>
+        </div>
+        <div class="sticky bottom-0 bg-white border-t px-6 py-3 flex justify-end gap-2" style="border-color:var(--border)">
+          <button class="icon-btn" onclick="state.opinionSourceEditor=null;render();">取消</button>
+          <button class="icon-btn" style="background:${sideColor};color:white;border-color:${sideColor}" onclick="saveOpinionSourceFromModal('${src.id}','${e.mode}','${src.type}')">${e.mode==='add'?'新增':'儲存'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== 輿情操作函式 ====================
+// 篩選下拉選單的選項(根據關鍵字)
+function filterCaseRefDropdown(keyword) {
+  const select = document.getElementById('op-case-ref');
+  if (!select) return;
+  const kw = (keyword || '').trim().toLowerCase();
+  const optgroups = select.querySelectorAll('optgroup');
+  optgroups.forEach(og => {
+    let hasVisible = false;
+    og.querySelectorAll('option').forEach(opt => {
+      const matched = !kw || opt.textContent.toLowerCase().includes(kw);
+      opt.style.display = matched ? '' : 'none';
+      if (matched) hasVisible = true;
+    });
+    og.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+async function autoFetchTitle() {
+  const urlInput = document.getElementById('src-url');
+  const titleInput = document.getElementById('src-title');
+  if (!urlInput || !urlInput.value) { alert('請先輸入網址'); return; }
+  titleInput.value = '抓取中...';
+  const t = await fetchUrlTitle(urlInput.value);
+  if (t) {
+    titleInput.value = t;
+  } else {
+    titleInput.value = '';
+    alert('無法自動抓取標題(可能因 CORS 政策),請手動填寫');
+  }
+}
+
+function saveOpinionFromModal(oid, mode) {
+  const title = document.getElementById('op-title').value.trim();
+  if (!title) { alert('請填寫事件標題'); return; }
+  
+  const data = {
+    title,
+    case_ref: document.getElementById('op-case-ref').value.trim(),
+    severity: document.getElementById('op-severity').value,
+    status: document.getElementById('op-status').value,
+    summary: document.getElementById('op-summary').value.trim(),
+    created_at: document.getElementById('op-created').value,
+    updated_at: document.getElementById('op-updated').value
+  };
+  
+  const opinions = loadOpinions();
+  if (mode === 'create') {
+    opinions.unshift({ id: oid, ...data, negative: [], clarification: [] });
+  } else {
+    const idx = opinions.findIndex(x => x.id === oid);
+    if (idx >= 0) opinions[idx] = { ...opinions[idx], ...data, updated_at: data.updated_at || new Date().toISOString().substring(0,10) };
+  }
+  if (saveOpinions(opinions)) {
+    state.opinionEditor = null;
+    render();
+  }
+}
+
+async function saveOpinionSourceFromModal(sid, mode, defaultType) {
+  const e = state.opinionSourceEditor;
+  if (!e) return;
+  
+  // 判斷實際 type:看哪個欄位區塊是顯示的
+  const urlFields = document.getElementById('src-url-fields');
+  const isUrl = urlFields && urlFields.style.display !== 'none';
+  const type = isUrl ? 'url' : 'pdf';
+  
+  const title = document.getElementById('src-title').value.trim();
+  const excerpt = document.getElementById('src-excerpt').value.trim();
+  const source = document.getElementById('src-source').value.trim();
+  const date = document.getElementById('src-date').value;
+  
+  if (!title) { alert('請填寫標題'); return; }
+  
+  const newSrc = { id: sid, type, title, excerpt, source, date };
+  
+  if (type === 'url') {
+    const url = document.getElementById('src-url').value.trim();
+    if (!url) { alert('請填寫網址'); return; }
+    newSrc.url = url;
+  } else {
+    // PDF 處理
+    const fileInput = document.getElementById('src-pdf-file');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        if (!confirm('PDF 大於 2MB,可能造成儲存失敗。仍要繼續嗎?')) return;
+      }
+      try {
+        newSrc.base64 = await pdfToBase64(file);
+        newSrc.filename = file.name;
+        newSrc.filesize = file.size;
+      } catch(err) { alert('PDF 讀取失敗:' + err.message); return; }
+    } else if (mode === 'edit') {
+      // 編輯模式且沒重傳檔案 -> 保留原 base64
+      const opinions = loadOpinions();
+      const op = opinions.find(x => x.id === e.oid);
+      const list = e.side === 'negative' ? op.negative : op.clarification;
+      const old = list.find(s => s.id === sid);
+      if (old && old.base64) {
+        newSrc.base64 = old.base64;
+        newSrc.filename = old.filename;
+        newSrc.filesize = old.filesize;
+      } else {
+        alert('請上傳 PDF 檔案'); return;
+      }
+    } else {
+      alert('請上傳 PDF 檔案'); return;
+    }
+  }
+  
+  // 寫入
+  const opinions = loadOpinions();
+  const op = opinions.find(x => x.id === e.oid);
+  if (!op) return;
+  const list = e.side === 'negative' ? (op.negative = op.negative || []) : (op.clarification = op.clarification || []);
+  if (mode === 'add') {
+    list.push(newSrc);
+  } else {
+    const idx = list.findIndex(s => s.id === sid);
+    if (idx >= 0) list[idx] = newSrc;
+  }
+  op.updated_at = new Date().toISOString().substring(0,10);
+  if (saveOpinions(opinions)) {
+    state.opinionSourceEditor = null;
+    render();
+  }
+}
+
+function deleteOpinion(oid) {
+  const opinions = loadOpinions();
+  const op = opinions.find(x => x.id === oid);
+  if (!op) return;
+  if (!confirm('確定刪除「' + op.title + '」?所有相關來源與 PDF 也會一併刪除,無法復原。')) return;
+  const filtered = opinions.filter(x => x.id !== oid);
+  if (saveOpinions(filtered)) render();
+}
+
+function deleteOpinionSource(oid, side, sid) {
+  if (!confirm('確定刪除此來源?')) return;
+  const opinions = loadOpinions();
+  const op = opinions.find(x => x.id === oid);
+  if (!op) return;
+  const key = side === 'negative' ? 'negative' : 'clarification';
+  op[key] = (op[key] || []).filter(s => s.id !== sid);
+  op.updated_at = new Date().toISOString().substring(0,10);
+  if (saveOpinions(opinions)) render();
+}
+
+function openOpinionPdf(oid, side, sid) {
+  const opinions = loadOpinions();
+  const op = opinions.find(x => x.id === oid);
+  if (!op) return;
+  const list = side === 'negative' ? op.negative : op.clarification;
+  const src = list.find(s => s.id === sid);
+  if (!src || !src.base64) { alert('PDF 資料遺失'); return; }
+  openPdfBase64(src.base64, src.filename);
+}
+
 // 更新記錄區塊 (顯示在主畫面下方)
 function tplChangelog() {
   const diff = loadDiff();
@@ -1414,7 +2289,11 @@ const state = {
   editorRow: null,     // 編輯中的 row index (null = 新增, 數字 = 編輯)
   importPreview: null,
   importPreviewSelections: null,
-  changelogOpen: false
+  changelogOpen: false,
+  // 輿情功能
+  opinionEditor: null,            // null | {oid, mode:'create'|'edit'}
+  opinionSourceEditor: null,      // null | {oid, side:'negative'|'clarification', sid, mode:'add'|'edit'}
+  opinionCollapsed: {}            // { [oid]: bool } 個別事件收合
 };
 
 function setState(patch) {
@@ -2930,6 +3809,7 @@ function render() {
   app.innerHTML = `
     ${tplHeader()}
     <main class="max-w-7xl mx-auto px-6 py-6">
+      ${tplOpinionSection()}
       ${state.tab === 'solar' ? tplSolarDashboard() : tplHydroDashboard()}
       ${tplChangelog()}
     </main>
@@ -2941,6 +3821,8 @@ function render() {
     ${state.vendorModal !== null ? tplVendorModal(state.vendorModal) : ''}
     ${state.editor !== null ? tplEditorModal() : ''}
     ${state.importPreview ? tplImportPreviewModal() : ''}
+    ${state.opinionEditor !== null ? tplOpinionEditorModal() : ''}
+    ${state.opinionSourceEditor !== null ? tplOpinionSourceEditorModal() : ''}
   `;
   
   // 重畫 charts
