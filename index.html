@@ -190,6 +190,103 @@ function loadOpinions(tab) {
   return loadAllOpinions()[tabKey] || [];
 }
 
+// 從同目錄抓 opinions.json(若有,代表這是「公開部署版」)
+// 抓到後寫進 localStorage 作為主要資料來源
+async function fetchOpinionsFromServer() {
+  // 加上 cache buster 避免瀏覽器/CDN 快取舊版
+  const url = 'opinions.json?t=' + Date.now();
+  try {
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    // 驗證結構
+    if (!data || typeof data !== 'object') return null;
+    const normalized = {
+      solar: Array.isArray(data.solar) ? data.solar : [],
+      hydro: Array.isArray(data.hydro) ? data.hydro : []
+    };
+    // 寫進 localStorage(覆蓋本機;PDF 等大型內容仍會保留在本機,因為 server 端 JSON 不含 base64)
+    // 為了不損失本機已上傳的 PDF base64,做合併:server 是基底,但本機已存在的 base64 留著
+    try {
+      const local = loadAllOpinions();
+      ['solar','hydro'].forEach(tab => {
+        normalized[tab].forEach(serverOp => {
+          const localOp = (local[tab] || []).find(x => x.id === serverOp.id);
+          if (!localOp) return;
+          // 合併 negative/clarification 的 PDF base64(若 server 沒有但本機有,把 base64 補回去)
+          ['negative','clarification'].forEach(side => {
+            (serverOp[side] || []).forEach(srvSrc => {
+              if (srvSrc.type === 'pdf' && !srvSrc.base64) {
+                const localSrc = (localOp[side] || []).find(s => s.id === srvSrc.id);
+                if (localSrc && localSrc.base64) {
+                  srvSrc.base64 = localSrc.base64;
+                  srvSrc.filename = srvSrc.filename || localSrc.filename;
+                  srvSrc.filesize = srvSrc.filesize || localSrc.filesize;
+                }
+              }
+            });
+          });
+        });
+      });
+    } catch(e) { /* 合併失敗也沒關係,server 版仍可用 */ }
+    
+    localStorage.setItem(OPINION_KEY, JSON.stringify(normalized));
+    return normalized;
+  } catch(e) {
+    // 沒有 opinions.json 是正常的(本機開發/未發布雲端版),靜默
+    return null;
+  }
+}
+
+// 匯出輿情 JSON 給使用者下載(供上傳到 GitHub)
+// 自動把 PDF base64 抽掉(太大、隱私問題),只保留結構性資料
+function exportOpinionsJson() {
+  const all = loadAllOpinions();
+  const exported = { solar: [], hydro: [] };
+  
+  let pdfCount = 0;
+  ['solar','hydro'].forEach(tab => {
+    (all[tab] || []).forEach(op => {
+      // 深拷貝
+      const copy = JSON.parse(JSON.stringify(op));
+      ['negative','clarification'].forEach(side => {
+        (copy[side] || []).forEach(src => {
+          if (src.type === 'pdf' && src.base64) {
+            delete src.base64;     // 移除 base64,避免 JSON 過大
+            src._pdf_local_only = true;
+            pdfCount++;
+          }
+        });
+      });
+      exported[tab].push(copy);
+    });
+  });
+  
+  const json = JSON.stringify(exported, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'opinions.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  
+  // 提示
+  const totalCount = (exported.solar.length + exported.hydro.length);
+  let msg = '✅ 已匯出 opinions.json(共 ' + totalCount + ' 個輿情事件)\n\n';
+  msg += '📋 後續步驟:\n';
+  msg += '1. 把 opinions.json 上傳到你的 GitHub repo(跟 index.html 同目錄)\n';
+  msg += '2. Commit & Push(或網頁版直接拖檔覆蓋)\n';
+  msg += '3. GitHub Pages 約 1 分鐘後生效,其他人重整就會看到\n';
+  if (pdfCount > 0) {
+    msg += '\n⚠️ 注意:有 ' + pdfCount + ' 個 PDF 因檔案過大未匯出。\n';
+    msg += '   其他人會看到 PDF 標題與摘要,但無法開啟檔案。\n';
+    msg += '   建議:把重要 PDF 上傳到 Google Drive,改用「URL 來源」放連結。';
+  }
+  alert(msg);
+}
+
+
 function saveOpinions(arr, tab) {
   const tabKey = tab || state.tab || 'solar';
   const all = loadAllOpinions();
@@ -1318,11 +1415,19 @@ function tplOpinionSection() {
             <h2 class="text-xl font-bold font-serif-tc" style="color:#78350f">📢 ${tabLabel}輿情監控</h2>
             <p class="text-xs mt-1" style="color:#92400e">負面輿論與我方澄清資料並列追蹤,提供長官即時掌握</p>
           </div>
-          <button class="icon-btn no-print" 
-                  style="background:#f59e0b;color:white;border-color:#d97706;font-weight:600"
-                  onclick="state.opinionEditor = { mode: 'create' }; render();">
-            ➕ 新增${tabLabel}輿情事件
-          </button>
+          <div class="flex gap-2 flex-wrap">
+            <button class="icon-btn no-print" 
+                    style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
+                    onclick="exportOpinionsJson()"
+                    title="匯出輿情 JSON 檔(供上傳到 GitHub 與長官同步)">
+              📤 匯出 JSON
+            </button>
+            <button class="icon-btn no-print" 
+                    style="background:#f59e0b;color:white;border-color:#d97706;font-weight:600"
+                    onclick="state.opinionEditor = { mode: 'create' }; render();">
+              ➕ 新增${tabLabel}輿情事件
+            </button>
+          </div>
         </div>
         
         ${opinions.length === 0 ? `
@@ -1486,6 +1591,7 @@ function tplOpinionSourceItem(oid, side, src) {
             ${src.excerpt ? `<p class="text-xs mt-1" style="color:#4b5563;line-height:1.4">${src.excerpt}</p>` : ''}
             <button class="text-xs underline mt-1 no-print" style="color:${sideColor}"
                     onclick="openOpinionPdf('${oid}','${side}','${src.id}')">📖 開啟 PDF</button>
+            ${src._pdf_local_only && !src.base64 ? `<span class="text-xs ml-2 px-1.5 py-0.5 rounded" style="background:#fef3c7;color:#92400e">⚠️ 僅原機可閱</span>` : ''}
           </div>
           <div class="flex flex-col gap-1 no-print">
             <button class="icon-btn" style="padding:2px 6px;font-size:10px"
@@ -1847,7 +1953,15 @@ function openOpinionPdf(oid, side, sid) {
   if (!op) return;
   const list = side === 'negative' ? op.negative : op.clarification;
   const src = list.find(s => s.id === sid);
-  if (!src || !src.base64) { alert('PDF 資料遺失'); return; }
+  if (!src) { alert('PDF 來源已遺失'); return; }
+  if (!src.base64) {
+    if (src._pdf_local_only) {
+      alert('這個 PDF 檔案僅存在於原上傳者的電腦上,未隨網頁部署。\n\n建議:聯絡計畫團隊取得 PDF,或檢視標題與摘要即可。');
+    } else {
+      alert('PDF 資料遺失');
+    }
+    return;
+  }
   openPdfBase64(src.base64, src.filename);
 }
 
@@ -2682,7 +2796,11 @@ function tplSolarFilters() {
     <div class="rounded-xl p-4 mb-5 space-y-3" style="background:#f8fafc">
       <div class="flex items-center gap-2 flex-wrap">
         <div class="flex items-center gap-1.5">${ICON.search}<span class="text-xs font-medium" style="color:var(--ink-soft)">關鍵字</span></div>
-        <input type="text" id="solar-search" placeholder="搜尋案場名稱或廠商..." value="${state.solar.search}" oninput="setFilter('solar.search', this.value)" style="flex:1;min-width:200px">
+        <input type="text" id="solar-search" placeholder="搜尋案場名稱或廠商..." value="${state.solar.search}" 
+          oninput="handleSearchInput(this, 'solar.search')"
+          oncompositionstart="handleCompositionStart(this)"
+          oncompositionend="handleCompositionEnd(this, 'solar.search')"
+          style="flex:1;min-width:200px">
         <button class="icon-btn no-print" onclick="printFilteredView('solar-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
       </div>
       <div class="flex items-start gap-4 flex-wrap">
@@ -2710,7 +2828,7 @@ function tplSolarCards() {
   });
   const display = filtered.slice(0, 60);
   return `
-    <p class="text-xs mb-3" style="color:var(--ink-soft)">目前篩選顯示 <strong>${filtered.length}</strong> / ${all.length} 案${filtered.length > 60 ? '，效能考量先顯示前 60 筆，請使用篩選器縮小範圍' : ''}</p>
+    <p id="solar-filter-count" class="text-xs mb-3" style="color:var(--ink-soft)">目前篩選顯示 <strong>${filtered.length}</strong> / ${all.length} 案${filtered.length > 60 ? '，效能考量先顯示前 60 筆，請使用篩選器縮小範圍' : ''}</p>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       ${display.length > 0 ? display.map(tplSolarCard).join('') : '<p class="col-span-3 text-center py-8 text-sm" style="color:var(--ink-muted)">無符合條件的案場</p>'}
     </div>`;
@@ -2869,7 +2987,11 @@ function tplHydroFilters() {
     <div class="rounded-xl p-4 mb-5 space-y-3" style="background:#f8fafc">
       <div class="flex items-center gap-2 flex-wrap">
         <div class="flex items-center gap-1.5">${ICON.search}<span class="text-xs font-medium" style="color:var(--ink-soft)">關鍵字</span></div>
-        <input type="text" id="hydro-search" placeholder="搜尋案場名稱或廠商..." value="${state.hydro.search}" oninput="setFilter('hydro.search', this.value)" style="flex:1;min-width:200px">
+        <input type="text" id="hydro-search" placeholder="搜尋案場名稱或廠商..." value="${state.hydro.search}" 
+          oninput="handleSearchInput(this, 'hydro.search')"
+          oncompositionstart="handleCompositionStart(this)"
+          oncompositionend="handleCompositionEnd(this, 'hydro.search')"
+          style="flex:1;min-width:200px">
         <button class="icon-btn no-print" onclick="printFilteredView('hydro-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
       </div>
       <div class="flex items-start gap-4 flex-wrap">
@@ -2892,7 +3014,7 @@ function tplHydroCards() {
     return true;
   });
   return `
-    <p class="text-xs mb-3" style="color:var(--ink-soft)">目前篩選顯示 <strong>${filtered.length}</strong> / ${DATA.hydro.sites.length} 案場</p>
+    <p id="hydro-filter-count" class="text-xs mb-3" style="color:var(--ink-soft)">目前篩選顯示 <strong>${filtered.length}</strong> / ${DATA.hydro.sites.length} 案場</p>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       ${filtered.length > 0 ? filtered.map(tplHydroCard).join('') : '<p class="col-span-3 text-center py-8 text-sm" style="color:var(--ink-muted)">無符合條件的案場</p>'}
     </div>`;
@@ -3161,13 +3283,39 @@ function setFilter(path, value) {
       const container = document.getElementById(section + '-cards-container');
       if (container) {
         container.innerHTML = section === 'solar' ? tplSolarCards() : tplHydroCards();
-        // 更新篩選器按鈕狀態
+        // search 來自文字輸入框,不重畫全頁(避免失焦與中文輸入法選字被打斷)
+        // 只更新「目前篩選顯示 X / Y 案」這類計數
+        if (key === 'search') {
+          const countEl = document.getElementById(section + '-filter-count');
+          if (countEl) {
+            const total = section === 'solar' 
+              ? (DATA.solar.completed_sites.length + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length + DATA.solar.planning_sites.length)
+              : DATA.hydro.sites.length;
+            const filtered = container.querySelectorAll('.site-card').length;
+            countEl.textContent = '目前篩選顯示 ' + filtered + ' / ' + total + ' 案' + (filtered > 60 ? ',效能考量先顯示前 60 筆,請使用篩選器縮小範圍' : '');
+          }
+          return; // 搜尋時不重畫全頁
+        }
+        // 其他篩選(按鈕點擊)才重畫全頁以更新按鈕 active 狀態
         render();
         return;
       }
     }
     render();
   }
+}
+
+// ===== 中文輸入法支援 =====
+// 在搜尋框組字中暫停 setFilter,避免「ㄐㄧㄚˇ」這種未選字狀態觸發搜尋
+const _composingInputs = new WeakSet();
+function handleSearchInput(input, path) {
+  if (_composingInputs.has(input)) return;  // 組字中,不搜尋
+  setFilter(path, input.value);
+}
+function handleCompositionStart(input) { _composingInputs.add(input); }
+function handleCompositionEnd(input, path) {
+  _composingInputs.delete(input);
+  setFilter(path, input.value);  // 組完字才正式搜尋
 }
 
 function openMgmtModal(name) {
@@ -3835,7 +3983,11 @@ function render() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', render);
+document.addEventListener('DOMContentLoaded', async () => {
+  // 先嘗試從伺服器抓取最新輿情資料
+  try { await fetchOpinionsFromServer(); } catch(e) { console.warn('opinions.json 載入失敗', e); }
+  render();
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 </script>
 </body>
