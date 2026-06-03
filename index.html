@@ -2354,9 +2354,14 @@ function categorizeReason(r) {
 
 function getSolarAnomalies() {
   const arr = [];
+  // 1. 施工中區塊: 停工中(紅) + 待施工(黃)
   DATA.solar.construction_sites.filter(s => s.stage === '停工中').forEach((s, i) => {
     arr.push({ ...s, _level: 'red', _reason: '停工中', _key: 'c'+i });
   });
+  DATA.solar.construction_sites.filter(s => s.stage === '待施工').forEach((s, i) => {
+    arr.push({ ...s, _level: 'yellow', _reason: '待施工', _key: 'w'+i });
+  });
+  // 2. 行政程序中: 撤案(紅)
   DATA.solar.admin_sites.filter(s => s.progress && s.progress.includes('撤案')).forEach((s, i) => {
     arr.push({ ...s, _level: 'red', _reason: s.progress, _key: 'a'+i });
   });
@@ -2448,16 +2453,21 @@ function tplSectionHeader({ icon, title, subtitle, accent, sectionId, exportLabe
     </div>`;
 }
 
-function tplKpi({ label, value, unit, sublabel, accent, danger }) {
+function tplKpi({ label, value, unit, sublabel, accent, danger, source }) {
   const color = danger ? 'var(--alert)' : (accent || 'var(--ink)');
+  // source: 字串說明此 KPI 完全從匯入資料計算(可信)
+  // 有 source 時:卡片底色淡黃 + 左側黃色側條 + label 旁有 ✓ 標記 + 滑鼠移上去顯示溯源
+  const trustedStyle = source ? 'background:#fffbeb;border-left:3px solid #f59e0b' : '';
+  const trustedBadge = source ? `<span class="ml-1 text-xs" style="color:#d97706;font-weight:normal" title="${source}">✓</span>` : '';
   return `
-    <div class="kpi-card">
-      <div class="text-xs font-medium uppercase mb-2" style="color:var(--ink-soft);letter-spacing:0.08em">${label}</div>
+    <div class="kpi-card" style="${trustedStyle}" ${source ? `title="${source}"` : ''}>
+      <div class="text-xs font-medium uppercase mb-2" style="color:var(--ink-soft);letter-spacing:0.08em">${label}${trustedBadge}</div>
       <div class="flex items-baseline gap-1.5">
         <span class="text-3xl font-bold tabular-nums font-serif-tc" style="color:${color}">${value}</span>
         ${unit ? `<span class="text-sm font-medium" style="color:var(--ink-soft)">${unit}</span>` : ''}
       </div>
       ${sublabel ? `<p class="text-xs mt-1.5" style="color:var(--ink-muted)">${sublabel}</p>` : ''}
+      ${source ? `<p class="text-xs mt-1" style="color:#92400e;font-style:italic">↳ ${source}</p>` : ''}
     </div>`;
 }
 
@@ -2554,10 +2564,10 @@ function tplSolarDashboard() {
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          ${tplKpi({ label: '當前活躍異常', value: anomalies.length, unit: '案', danger: true, sublabel: anomalies.reduce((a,c)=>a+c.capacity_mw,0).toFixed(2) + ' MW 受影響' })}
-          ${tplKpi({ label: '歷年累計解約撤案', value: cancelled.length, unit: '案', danger: true, sublabel: cancelledMw.toFixed(1) + ' MW 流失 (約佔目標 ' + (cancelledMw/target*100).toFixed(0) + '%)' })}
-          ${tplKpi({ label: '主要解約原因', value: reasonData[0]?.n || '-', accent: 'var(--warning)', sublabel: reasonData[0] ? reasonData[0].v + ' 案 (' + (reasonData[0].v/cancelled.length*100).toFixed(0) + '%)' : '' })}
-          ${tplKpi({ label: '0% 達成處數', value: zeroCompletion.length, unit: '處', danger: true, sublabel: zeroCompletion.map(m => m.name).join('、') })}
+          ${tplKpi({ label: '當前活躍異常', value: anomalies.length, unit: '案', danger: true, sublabel: anomalies.reduce((a,c)=>a+c.capacity_mw,0).toFixed(2) + ' MW 受影響', source: '自動計算:停工中 + 待施工 + 行政程序撤案' })}
+          ${tplKpi({ label: '歷年累計解約撤案', value: cancelled.length, unit: '案', danger: true, sublabel: cancelledMw.toFixed(1) + ' MW 流失 (約佔目標 ' + (cancelledMw/target*100).toFixed(0) + '%)', source: '自動計算:解約清單 ' + cancelled.length + ' 筆容量加總' })}
+          ${tplKpi({ label: '主要解約原因', value: reasonData[0]?.n || '-', accent: 'var(--warning)', sublabel: reasonData[0] ? reasonData[0].v + ' 案 (' + (reasonData[0].v/cancelled.length*100).toFixed(0) + '%)' : '', source: '自動從 ' + cancelled.length + ' 件解約記錄分類' })}
+          ${tplKpi({ label: '0% 達成處數', value: zeroCompletion.length, unit: '處', danger: true, sublabel: zeroCompletion.map(m => m.name).join('、'), source: '自動從 14 個管理處達成率計算' })}
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
@@ -3151,10 +3161,10 @@ function tplHeader() {
         </div>
         <div class="mt-4 pt-3 border-t flex items-center gap-6 flex-wrap text-xs" style="border-color:var(--border);color:var(--ink-soft)">
           ${state.tab === 'solar' ? `
-            <span>已完工容量：<strong class="tabular-nums" style="color:var(--ink)">${DATA.solar.summary.total_completed_mw} MW</strong> / 目標 600 MW</span>
-            <span>整體達成率：<strong class="tabular-nums" style="color:var(--solar)">${(DATA.solar.summary.total_completed_mw/600*100).toFixed(1)}%</strong></span>
-            <span>圳路長度：<strong class="tabular-nums" style="color:var(--ink)">${DATA.solar.summary.channel_length_km} km</strong></span>
-            <span>估計年發電量：<strong class="tabular-nums" style="color:var(--ink)">${(DATA.solar.summary.gen_total_million_kwh/10000).toFixed(2)} 億度</strong></span>
+            <span title="自動從 135 件已完工案場容量加總計算">已完工容量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.total_completed_mw} MW</strong> / 目標 600 MW</span>
+            <span title="自動計算:已完工容量 / 600 MW">整體達成率：<strong class="tabular-nums" style="color:var(--solar);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.total_completed_mw/600*100).toFixed(1)}%</strong></span>
+            <span title="來自最新匯入的太陽光電盤點 Excel">圳路長度：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.channel_length_km} km</strong></span>
+            <span title="來自最新匯入的太陽光電盤點 Excel(萬度/10000)">估計年發電量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.gen_total_million_kwh/10000).toFixed(2)} 億度</strong></span>
           ` : `
             <span>總案場：<strong class="tabular-nums" style="color:var(--ink)">${DATA.hydro.summary.total_cases} 案</strong></span>
             <span>總容量：<strong class="tabular-nums" style="color:var(--ink)">${(DATA.hydro.summary.total_capacity_kw/1000).toFixed(2)} MW</strong></span>
