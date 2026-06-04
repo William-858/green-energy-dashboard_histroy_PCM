@@ -535,28 +535,111 @@ function tplCaseRefEmbed(caseRef) {
 }
 
 
-// 嘗試從 URL 抓取網頁標題(會被 CORS 擋,失敗就放手讓使用者手動填)
-async function fetchUrlTitle(url) {
-  // 使用 allorigins 公開 CORS proxy 作為 fallback
-  const proxies = [
-    'https://api.allorigins.win/get?url=' + encodeURIComponent(url),
-    'https://corsproxy.io/?' + encodeURIComponent(url)
-  ];
-  for (const proxyUrl of proxies) {
-    try {
-      const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-      if (!resp.ok) continue;
-      const data = await resp.json().catch(() => null);
-      const html = data?.contents || (typeof data === 'string' ? data : '');
-      if (!html) continue;
-      // 找 <title>...</title> 或 og:title
-      const ogMatch = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
-      if (ogMatch && ogMatch[1]) return ogMatch[1].trim();
-      const tMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      if (tMatch && tMatch[1]) return tMatch[1].trim();
-    } catch(e) { /* 試下一個 proxy */ }
+// 從 URL 自動識別來源(100% 可靠,只解析 URL 字串,不發網路請求)
+function detectSourceFromUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  // 取出 hostname
+  let host = '';
+  try {
+    const u = new URL(url);
+    host = u.hostname.toLowerCase().replace(/^www\./, '');
+  } catch(e) {
+    // URL 不合法,嘗試 regex 抓
+    const m = url.match(/^(?:https?:\/\/)?(?:www\.)?([^/?#]+)/i);
+    host = (m && m[1] || '').toLowerCase();
   }
-  return null; // 全失敗,讓使用者手動填
+  if (!host) return '';
+  // hostname 必須含 . 才算合理(避免「not a url」這類非網址字串被誤判)
+  if (!host.includes('.')) return '';
+  
+  // 對應表:hostname → 中文來源名
+  const map = {
+    // 社群
+    'facebook.com': 'Facebook',
+    'm.facebook.com': 'Facebook',
+    'fb.com': 'Facebook',
+    'fb.watch': 'Facebook',
+    'instagram.com': 'Instagram',
+    'twitter.com': 'Twitter / X',
+    'x.com': 'Twitter / X',
+    'threads.net': 'Threads',
+    'youtube.com': 'YouTube',
+    'youtu.be': 'YouTube',
+    'tiktok.com': 'TikTok',
+    'linkedin.com': 'LinkedIn',
+    // 論壇/部落格
+    'ptt.cc': 'PTT',
+    'dcard.tw': 'Dcard',
+    'mobile01.com': 'Mobile01',
+    'medium.com': 'Medium',
+    // 國內主流新聞
+    'udn.com': '聯合新聞網',
+    'cna.com.tw': '中央社',
+    'ltn.com.tw': '自由時報',
+    'chinatimes.com': '中國時報',
+    'ettoday.net': 'ETtoday',
+    'setn.com': '三立新聞網',
+    'tvbs.com.tw': 'TVBS',
+    'ftvnews.com.tw': '民視新聞',
+    'ct.org.tw': '基督教今日報',
+    'storm.mg': '風傳媒',
+    'newtalk.tw': 'Newtalk 新頭殼',
+    'rti.org.tw': '中央廣播電臺',
+    'cw.com.tw': '天下雜誌',
+    'businessweekly.com.tw': '商業周刊',
+    'thenewslens.com': '關鍵評論網',
+    'mirrormedia.mg': '鏡週刊',
+    'taipeitimes.com': 'Taipei Times',
+    'pts.org.tw': '公視',
+    'cts.com.tw': '華視',
+    'ttv.com.tw': '台視',
+    'nownews.com': 'NOWnews',
+    'pchome.com.tw': 'PChome 新聞',
+    // Yahoo 系列
+    'tw.news.yahoo.com': 'Yahoo 新聞',
+    'yahoo.com': 'Yahoo',
+    'news.yahoo.com.tw': 'Yahoo 新聞',
+    // Google
+    'news.google.com': 'Google 新聞',
+    'google.com': 'Google',
+    // 政府
+    'iaa.gov.tw': '農田水利署',
+    'moa.gov.tw': '農業部',
+    'ey.gov.tw': '行政院',
+    'moeaea.gov.tw': '經濟部能源署',
+    'epa.gov.tw': '環境部',
+    'moea.gov.tw': '經濟部',
+    // 其他
+    'reddit.com': 'Reddit',
+    'wikipedia.org': '維基百科'
+  };
+  
+  if (map[host]) return map[host];
+  
+  // 部分匹配(處理子網域,例:news.cnyes.com → 鉅亨網)
+  if (host.endsWith('.cnyes.com')) return '鉅亨網';
+  if (host.endsWith('.appledaily.com')) return '蘋果新聞網';
+  if (host.endsWith('.ltn.com.tw')) return '自由時報';
+  if (host.endsWith('.udn.com')) return '聯合新聞網';
+  if (host.endsWith('.chinatimes.com')) return '中國時報';
+  if (host.endsWith('.ettoday.net')) return 'ETtoday';
+  if (host.endsWith('.setn.com')) return '三立新聞網';
+  if (host.endsWith('.tvbs.com.tw')) return 'TVBS';
+  if (host.endsWith('.cna.com.tw')) return '中央社';
+  if (host.endsWith('.gov.tw')) return '政府機關 (' + host + ')';
+  
+  // 都不匹配 → 用 hostname 當預設
+  return host;
+}
+
+// 當使用者在 URL 欄位輸入/貼上時觸發 — 自動填「來源」欄(若該欄為空才填,避免覆蓋人工輸入)
+function autoFillSourceFromUrl(url) {
+  const srcInput = document.getElementById('src-source');
+  if (!srcInput) return;
+  // 只在來源欄為空時自動填,不覆蓋使用者已填內容
+  if (srcInput.value && srcInput.value.trim().length > 0) return;
+  const detected = detectSourceFromUrl(url);
+  if (detected) srcInput.value = detected;
 }
 
 // 上傳 PDF -> base64
@@ -1417,6 +1500,12 @@ function tplOpinionSection() {
           </div>
           <div class="flex gap-2 flex-wrap">
             <button class="icon-btn no-print" 
+                    style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600"
+                    onclick="window.open('https://script.google.com/a/macros/g.triwra.org.tw/s/AKfycbyrpYuXl6IsfUtJGi7GUuVU4H6WDFUoJ9VxI-L8x_IhQgMNIlAN9_osqbiIvEieE4j0/exec?page=candidates&key=GREENENERGY','_blank','noopener')"
+                    title="開啟內部輿情搜尋頁(需 g.triwra.org.tw 帳號登入),挑到要追蹤的新聞後回來點「➕ 新增輿情事件」貼上連結與摘要">
+              🔍 開啟輿情搜尋頁
+            </button>
+            <button class="icon-btn no-print" 
                     style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
                     onclick="exportOpinionsJson()"
                     title="匯出輿情 JSON 檔(供上傳到 GitHub 與長官同步)">
@@ -1749,11 +1838,8 @@ function tplOpinionSourceEditorModal() {
               <div class="space-y-3">
                 <div>
                   <label class="text-xs font-medium block mb-1" style="color:var(--ink-soft)">網址 *</label>
-                  <div class="flex gap-2">
-                    <input type="url" id="src-url" value="${(src.url||'').replace(/"/g,'&quot;')}" placeholder="https://..." style="flex:1">
-                    <button type="button" class="icon-btn" onclick="autoFetchTitle()">🔍 自動抓標題</button>
-                  </div>
-                  <p class="text-xs mt-1" style="color:#6b7280">提示:Facebook、Instagram 等社群網站常因 CORS 政策無法自動抓取,需手動填寫</p>
+                  <input type="url" id="src-url" value="${(src.url||'').replace(/"/g,'&quot;')}" placeholder="https://..." style="width:100%" oninput="autoFillSourceFromUrl(this.value)">
+                  <p class="text-xs mt-1" style="color:#6b7280">✨ 貼上網址後,下方「來源」欄會自動辨識(Yahoo、Facebook、聯合報...);標題與摘要需手動填</p>
                 </div>
               </div>
             </div>
@@ -1813,20 +1899,6 @@ function filterCaseRefDropdown(keyword) {
     });
     og.style.display = hasVisible ? '' : 'none';
   });
-}
-
-async function autoFetchTitle() {
-  const urlInput = document.getElementById('src-url');
-  const titleInput = document.getElementById('src-title');
-  if (!urlInput || !urlInput.value) { alert('請先輸入網址'); return; }
-  titleInput.value = '抓取中...';
-  const t = await fetchUrlTitle(urlInput.value);
-  if (t) {
-    titleInput.value = t;
-  } else {
-    titleInput.value = '';
-    alert('無法自動抓取標題(可能因 CORS 政策),請手動填寫');
-  }
 }
 
 function saveOpinionFromModal(oid, mode) {
@@ -2492,7 +2564,7 @@ function tplSolarCard(s) {
   const stageName = s._stage || s.stage || s._stageGroup;
   const typeMark = s.type === '圳路' ? '◇' : s.type === '埤塘' ? '○' : '◆';
   return `
-    <div class="site-card ${isAnomaly ? 'anomaly-red' : ''}" onclick="openMgmtModal('${s.mgmt}')">
+    <div class="site-card ${isAnomaly ? 'anomaly-red' : ''}" onclick="openSiteModal('solar:${s._kind}:${s._idx}')" style="cursor:pointer">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="flex items-center gap-1.5 flex-wrap">
           <span style="color:${stageColor}">${typeMark}</span>
@@ -2516,7 +2588,7 @@ function tplHydroCard(s) {
   const cardCls = s.anomaly_level === 'red' ? 'anomaly-red' : (s.anomaly_level === 'yellow' ? 'anomaly-yellow' : '');
   const stageColor = s.stage === '已完工/已完成' ? 'var(--success)' : 'var(--hydro)';
   return `
-    <div class="site-card ${cardCls}" onclick="openMgmtModal('${s.mgmt}')">
+    <div class="site-card ${cardCls}" onclick="openSiteModal('hydro:sites:${s._idx}')" style="cursor:pointer">
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="flex items-center gap-1.5 flex-wrap">
           ${tplBadge(s.substage, stageColor, stageColor + '15')}
@@ -2823,10 +2895,10 @@ function tplSolarFilters() {
 
 function tplSolarCards() {
   const all = [
-    ...DATA.solar.completed_sites.map(s => ({...s, _stage: '已完工'})),
-    ...DATA.solar.construction_sites.map(s => ({...s, _stage: s.stage})),
-    ...DATA.solar.admin_sites.map(s => ({...s, _stage: '行政程序中'})),
-    ...DATA.solar.planning_sites.map(s => ({...s, _stage: '規劃推動'}))
+    ...DATA.solar.completed_sites.map((s,i) => ({...s, _stage: '已完工', _kind: 'completed_sites', _idx: i})),
+    ...DATA.solar.construction_sites.map((s,i) => ({...s, _stage: s.stage, _kind: 'construction_sites', _idx: i})),
+    ...DATA.solar.admin_sites.map((s,i) => ({...s, _stage: '行政程序中', _kind: 'admin_sites', _idx: i})),
+    ...DATA.solar.planning_sites.map((s,i) => ({...s, _stage: '規劃推動', _kind: 'planning_sites', _idx: i}))
   ];
   const f = state.solar;
   const filtered = all.filter(s => {
@@ -3014,7 +3086,8 @@ function tplHydroFilters() {
 
 function tplHydroCards() {
   const f = state.hydro;
-  const filtered = DATA.hydro.sites.filter(s => {
+  const withIdx = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
+  const filtered = withIdx.filter(s => {
     if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
     if (f.substage !== 'all' && s.substage !== f.substage) return false;
     if (f.anomaly === 'red' && s.anomaly_level !== 'red') return false;
@@ -3329,7 +3402,91 @@ function handleCompositionEnd(input, path) {
 }
 
 function openMgmtModal(name) {
-  setState({ mgmtModal: name, vendorModal: null });
+  setState({ mgmtModal: name, vendorModal: null, siteModal: null });
+}
+
+function openSiteModal(caseRef) {
+  setState({ siteModal: { caseRef }, mgmtModal: null, vendorModal: null });
+}
+
+// 單一案場詳情 Modal — 重用 tplCaseRefEmbed 渲染主體
+function tplSiteDetailModal() {
+  if (!state.siteModal) return '';
+  const caseRef = state.siteModal.caseRef;
+  const info = resolveCaseRef(caseRef);
+  if (!info || info.notFound) {
+    return `
+      <div class="modal-backdrop no-print" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content" style="max-width:500px">
+          <div class="p-6">
+            <p style="color:#92400e">⚠️ 找不到此案場資料</p>
+            <button class="icon-btn mt-4" onclick="closeModal()">關閉</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  const isSite = info.type === 'site';
+  const isHydro = info.category === 'hydro';
+  const siteName = isSite ? (info.row.name || '(無名稱)') : info.name;
+  const mgmtName = isSite ? info.row.mgmt : info.name.replace('管理處','');
+  const accentColor = isHydro ? 'var(--hydro)' : 'var(--solar)';
+  const typeLabel = isHydro ? '小水力' : '太陽光電';
+  
+  return `
+    <div class="modal-backdrop no-print" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content" style="max-width:720px;max-height:85vh;overflow:auto">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between" style="border-color:var(--border);z-index:1">
+          <div>
+            <p class="text-xs font-medium uppercase mb-1" style="color:${accentColor};letter-spacing:0.1em">${typeLabel} · 案場深入查看</p>
+            <h2 class="text-xl font-bold font-serif-tc">${siteName}</h2>
+          </div>
+          <button class="icon-btn" onclick="closeModal()">✕ 關閉</button>
+        </div>
+        <div class="p-6">
+          ${tplCaseRefEmbed(caseRef)}
+          
+          ${isSite && mgmtName ? `
+            <div class="mt-4 p-3 rounded-lg" style="background:#f8fafc;border:1px solid var(--border)">
+              <p class="text-xs mb-2" style="color:var(--ink-soft)">同管理處的其他案場?</p>
+              <button class="icon-btn" onclick="openMgmtModal('${mgmtName}')" style="background:${accentColor};color:white;border-color:${accentColor}">
+                🏢 查看「${mgmtName}管理處」完整資料
+              </button>
+            </div>
+          ` : ''}
+          
+          ${isSite ? tplSiteRelatedOpinions(caseRef) : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// 顯示與本案場關聯的輿情(若有)
+function tplSiteRelatedOpinions(caseRef) {
+  const tab = caseRef.startsWith('solar:') ? 'solar' : 'hydro';
+  const opinions = loadOpinions(tab);
+  const related = opinions.filter(op => op.case_ref === caseRef);
+  if (related.length === 0) return '';
+  
+  return `
+    <div class="mt-4 p-3 rounded-lg" style="background:#fffbeb;border:1px solid #fbbf24">
+      <p class="text-xs font-bold mb-2" style="color:#92400e">📢 與此案場關聯的輿情事件 (${related.length})</p>
+      <div class="space-y-2">
+        ${related.map(op => `
+          <div class="text-xs p-2 rounded" style="background:white;border:1px solid #fde68a">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span style="color:${(OPINION_SEVERITIES[op.severity]||OPINION_SEVERITIES.medium).color};font-weight:bold">${(OPINION_SEVERITIES[op.severity]||OPINION_SEVERITIES.medium).label}</span>
+              <span style="color:${(OPINION_STATUSES[op.status]||OPINION_STATUSES.unhandled).color}">${(OPINION_STATUSES[op.status]||OPINION_STATUSES.unhandled).label}</span>
+            </div>
+            <p class="mt-1 font-medium">${op.title}</p>
+            ${op.summary ? `<p class="mt-1" style="color:var(--ink-soft)">${op.summary}</p>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function openVendorModal(idx) {
@@ -3469,6 +3626,7 @@ function openEditor(section) {
   state.editor = section;
   state.editorRow = null;
   state.mgmtModal = null;
+  state.siteModal = null;
   state.vendorModal = null;
   render();
 }
@@ -3659,14 +3817,15 @@ function deleteRow(idx) {
 // ==================== 編輯器 結束 ====================
 
 function closeModal() {
-  setState({ mgmtModal: null, vendorModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null });
+  setState({ mgmtModal: null, vendorModal: null, siteModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null });
 }
 
 function printDashboard() {
   // 關閉 modal
-  if (state.mgmtModal !== null || state.vendorModal !== null) {
+  if (state.mgmtModal !== null || state.vendorModal !== null || state.siteModal !== null) {
     state.mgmtModal = null;
     state.vendorModal = null;
+    state.siteModal = null;
     render();
   }
   
@@ -3977,6 +4136,7 @@ function render() {
     </footer>
     ${state.mgmtModal !== null ? tplMgmtModal(state.mgmtModal) : ''}
     ${state.vendorModal !== null ? tplVendorModal(state.vendorModal) : ''}
+    ${state.siteModal !== null ? tplSiteDetailModal() : ''}
     ${state.editor !== null ? tplEditorModal() : ''}
     ${state.importPreview ? tplImportPreviewModal() : ''}
     ${state.opinionEditor !== null ? tplOpinionEditorModal() : ''}
