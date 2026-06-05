@@ -2478,15 +2478,18 @@ function categorizeReason(r) {
 function getSolarAnomalies() {
   const arr = [];
   // 1. 施工中區塊: 停工中(紅) + 待施工(黃)
-  DATA.solar.construction_sites.filter(s => s.stage === '停工中').forEach((s, i) => {
-    arr.push({ ...s, _level: 'red', _reason: '停工中', _key: 'c'+i });
-  });
-  DATA.solar.construction_sites.filter(s => s.stage === '待施工').forEach((s, i) => {
-    arr.push({ ...s, _level: 'yellow', _reason: '待施工', _key: 'w'+i });
+  DATA.solar.construction_sites.forEach((s, i) => {
+    if (s.stage === '停工中') {
+      arr.push({ ...s, _level: 'red', _reason: '停工中', _kind: 'construction_sites', _idx: i, _key: 'c'+i });
+    } else if (s.stage === '待施工') {
+      arr.push({ ...s, _level: 'yellow', _reason: '待施工', _kind: 'construction_sites', _idx: i, _key: 'w'+i });
+    }
   });
   // 2. 行政程序中: 撤案(紅)
-  DATA.solar.admin_sites.filter(s => s.progress && s.progress.includes('撤案')).forEach((s, i) => {
-    arr.push({ ...s, _level: 'red', _reason: s.progress, _key: 'a'+i });
+  DATA.solar.admin_sites.forEach((s, i) => {
+    if (s.progress && s.progress.includes('撤案')) {
+      arr.push({ ...s, _level: 'red', _reason: s.progress, _kind: 'admin_sites', _idx: i, _key: 'a'+i });
+    }
   });
   return arr;
 }
@@ -2528,6 +2531,8 @@ const state = {
   cancelExpanded: false,
   mgmtModal: null,
   vendorModal: null,
+  siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
+  listModal: null,   // { title, subtitle, caseRefs:[], color }
   editor: null,        // { section: 'solar.completed_sites' | 'hydro.sites' | 'solar.mgmt' | ..., search: '' }
   editorRow: null,     // 編輯中的 row index (null = 新增, 數字 = 編輯)
   importPreview: null,
@@ -2577,15 +2582,17 @@ function tplSectionHeader({ icon, title, subtitle, accent, sectionId, exportLabe
     </div>`;
 }
 
-function tplKpi({ label, value, unit, sublabel, accent, danger, source }) {
+function tplKpi({ label, value, unit, sublabel, accent, danger, source, onClick }) {
   const color = danger ? 'var(--alert)' : (accent || 'var(--ink)');
-  // source: 字串說明此 KPI 完全從匯入資料計算(可信)
-  // 有 source 時:卡片底色淡黃 + 左側黃色側條 + label 旁有 ✓ 標記 + 滑鼠移上去顯示溯源
   const trustedStyle = source ? 'background:#fffbeb;border-left:3px solid #f59e0b' : '';
   const trustedBadge = source ? `<span class="ml-1 text-xs" style="color:#d97706;font-weight:normal" title="${source}">✓</span>` : '';
+  // onClick:有則整張卡可點擊,加入 hover 效果與 cursor
+  const clickStyle = onClick ? 'cursor:pointer;transition:box-shadow 0.15s, transform 0.1s' : '';
+  const clickAttr = onClick ? `onclick="${onClick}" onmouseover="this.style.boxShadow='0 4px 8px rgba(0,0,0,0.12)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='';this.style.transform=''"` : '';
+  const clickHint = onClick ? `<span class="text-xs ml-1" style="color:var(--ink-muted)">↗</span>` : '';
   return `
-    <div class="kpi-card" style="${trustedStyle}" ${source ? `title="${source}"` : ''}>
-      <div class="text-xs font-medium uppercase mb-2" style="color:var(--ink-soft);letter-spacing:0.08em">${label}${trustedBadge}</div>
+    <div class="kpi-card" style="${trustedStyle};${clickStyle}" ${source ? `title="${onClick?'點擊查看詳細 · ':''}${source}"` : (onClick ? 'title="點擊查看詳細"' : '')} ${clickAttr}>
+      <div class="text-xs font-medium uppercase mb-2" style="color:var(--ink-soft);letter-spacing:0.08em">${label}${trustedBadge}${clickHint}</div>
       <div class="flex items-baseline gap-1.5">
         <span class="text-3xl font-bold tabular-nums font-serif-tc" style="color:${color}">${value}</span>
         ${unit ? `<span class="text-sm font-medium" style="color:var(--ink-soft)">${unit}</span>` : ''}
@@ -2669,11 +2676,14 @@ function tplSolarDashboard() {
   const mgmtSorted = [...DATA.solar.mgmt].sort((a, b) => a.achievement_pct - b.achievement_pct);
   const zeroCompletion = mgmtSorted.filter(m => m.achievement_pct === 0);
   
-  // 原因分類
-  const reasonMap = {};
-  cancelled.forEach(c => {
+  // 原因分類(同時保留每類的索引,供點擊顯示明細)
+  const reasonMap = {};      // { 原因: 數量 }
+  const reasonRefs = {};     // { 原因: ['solar:cancelled_sites:0', ...] }
+  cancelled.forEach((c, i) => {
     const cat = categorizeReason(c.reason);
     reasonMap[cat] = (reasonMap[cat] || 0) + 1;
+    if (!reasonRefs[cat]) reasonRefs[cat] = [];
+    reasonRefs[cat].push('solar:cancelled_sites:' + i);
   });
   const reasonData = Object.entries(reasonMap).map(([n, v]) => ({n, v})).sort((a,b)=>b.v-a.v);
   
@@ -2688,10 +2698,30 @@ function tplSolarDashboard() {
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          ${tplKpi({ label: '當前活躍異常', value: anomalies.length, unit: '案', danger: true, sublabel: anomalies.reduce((a,c)=>a+c.capacity_mw,0).toFixed(2) + ' MW 受影響', source: '自動計算:停工中 + 待施工 + 行政程序撤案' })}
-          ${tplKpi({ label: '歷年累計解約撤案', value: cancelled.length, unit: '案', danger: true, sublabel: cancelledMw.toFixed(1) + ' MW 流失 (約佔目標 ' + (cancelledMw/target*100).toFixed(0) + '%)', source: '自動計算:解約清單 ' + cancelled.length + ' 筆容量加總' })}
-          ${tplKpi({ label: '主要解約原因', value: reasonData[0]?.n || '-', accent: 'var(--warning)', sublabel: reasonData[0] ? reasonData[0].v + ' 案 (' + (reasonData[0].v/cancelled.length*100).toFixed(0) + '%)' : '', source: '自動從 ' + cancelled.length + ' 件解約記錄分類' })}
-          ${tplKpi({ label: '0% 達成處數', value: zeroCompletion.length, unit: '處', danger: true, sublabel: zeroCompletion.map(m => m.name).join('、'), source: '自動從 14 個管理處達成率計算' })}
+          ${tplKpi({ 
+            label: '當前活躍異常', value: anomalies.length, unit: '案', danger: true,
+            sublabel: anomalies.reduce((a,c)=>a+c.capacity_mw,0).toFixed(2) + ' MW 受影響',
+            source: '自動計算:停工中 + 待施工 + 行政程序撤案',
+            onClick: 'openListModal(\'當前活躍異常案件\', \'停工中 / 待施工 / 行政程序撤案\', ' + JSON.stringify(anomalies.map(a => 'solar:'+a._kind+':'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--alert)\')'
+          })}
+          ${tplKpi({ 
+            label: '歷年累計解約撤案', value: cancelled.length, unit: '案', danger: true,
+            sublabel: cancelledMw.toFixed(1) + ' MW 流失 (約佔目標 ' + (cancelledMw/target*100).toFixed(0) + '%)',
+            source: '自動計算:解約清單 ' + cancelled.length + ' 筆容量加總',
+            onClick: 'openListModal(\'歷年累計解約撤案\', \'總計 ' + cancelled.length + ' 件、流失 ' + cancelledMw.toFixed(1) + ' MW\', ' + JSON.stringify(cancelled.map((c,i) => 'solar:cancelled_sites:'+i)).replace(/"/g,'&quot;') + ', \'var(--alert)\')'
+          })}
+          ${tplKpi({ 
+            label: '主要解約原因', value: reasonData[0]?.n || '-', accent: 'var(--warning)',
+            sublabel: reasonData[0] ? reasonData[0].v + ' 案 (' + (reasonData[0].v/cancelled.length*100).toFixed(0) + '%)' : '',
+            source: '自動從 ' + cancelled.length + ' 件解約記錄分類',
+            onClick: reasonData[0] ? 'openListModal(\'主要解約原因:' + reasonData[0].n + '\', \'此原因分類共 ' + reasonData[0].v + ' 案\', ' + JSON.stringify(reasonRefs[reasonData[0].n] || []).replace(/"/g,'&quot;') + ', \'var(--warning)\')' : null
+          })}
+          ${tplKpi({ 
+            label: '0% 達成處數', value: zeroCompletion.length, unit: '處', danger: true,
+            sublabel: zeroCompletion.map(m => m.name).join('、'),
+            source: '自動從 14 個管理處達成率計算',
+            onClick: 'openListModal(\'0% 達成的管理處\', \'尚未有任何已完工容量的 ' + zeroCompletion.length + ' 處管理處\', ' + JSON.stringify(zeroCompletion.map(m => 'mgmt:solar:'+m.name)).replace(/"/g,'&quot;') + ', \'var(--alert)\')'
+          })}
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
@@ -2711,21 +2741,26 @@ function tplSolarDashboard() {
           當前活躍異常案件 (${anomalies.length} 案)
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-          ${anomalies.map(a => `
-            <div class="rounded-lg border p-4" style="border-color:#fecaca;background:#fef2f2">
+          ${anomalies.map(a => {
+            const bgColor = a._level === 'yellow' ? '#fff7ed' : '#fef2f2';
+            const borderColor = a._level === 'yellow' ? '#fed7aa' : '#fecaca';
+            const badgeColor = a._level === 'yellow' ? 'var(--warning)' : 'var(--alert)';
+            return `
+            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${borderColor};background:${bgColor};cursor:pointer" 
+                 onclick="openSiteModal('solar:${a._kind}:${a._idx}')">
               <div class="flex items-start justify-between gap-2 mb-2">
                 <div class="flex-1">
                   <p class="font-semibold text-sm">${a.name}</p>
                   <p class="text-xs mt-0.5" style="color:var(--ink-soft)">${a.mgmt}管理處・${a.county}・${a.type}</p>
                 </div>
-                ${tplBadge(a._reason, 'var(--alert)', '#fee2e2')}
+                ${tplBadge(a._reason, badgeColor, a._level === 'yellow' ? '#fed7aa' : '#fee2e2')}
               </div>
-              <div class="flex items-center gap-3 text-xs mt-2 pt-2 border-t" style="border-color:#fecaca">
+              <div class="flex items-center gap-3 text-xs mt-2 pt-2 border-t" style="border-color:${borderColor}">
                 <span style="color:var(--ink-soft)">容量 <strong>${a.capacity_mw} MW</strong></span>
                 <span style="color:var(--ink-soft)">廠商 <strong>${a.vendor}</strong></span>
               </div>
-            </div>
-          `).join('')}
+            </div>`;
+          }).join('')}
         </div>
         
         ${tplCancelledList(cancelled)}
@@ -2809,9 +2844,36 @@ function tplSolarDashboard() {
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
-          ${DATA.solar.stages.map(s => `
-            <div class="rounded-xl border p-4" style="border-color:var(--border);background:${s.color}08">
-              <div class="text-xs font-medium uppercase mb-1.5" style="color:${s.color};letter-spacing:0.06em">${s.name}</div>
+          ${DATA.solar.stages.map(s => {
+            // 各階段對應的 caseRefs 來源
+            // 已完工→completed_sites; 施工中(含待施工)→construction_sites; 完成招商→admin_sites; 評估待招商→planning_sites
+            let kind = '';
+            let caseRefs = [];
+            if (s.name.includes('已完工')) {
+              kind = 'completed_sites';
+              caseRefs = DATA.solar.completed_sites.map((x,i) => 'solar:completed_sites:'+i);
+            } else if (s.name.includes('施工')) {
+              kind = 'construction_sites';
+              caseRefs = DATA.solar.construction_sites.map((x,i) => 'solar:construction_sites:'+i);
+            } else if (s.name.includes('行政程序') || s.name.includes('完成招商')) {
+              kind = 'admin_sites';
+              caseRefs = DATA.solar.admin_sites.map((x,i) => 'solar:admin_sites:'+i);
+            } else if (s.name.includes('評估') || s.name.includes('招商')) {
+              kind = 'planning_sites';
+              caseRefs = DATA.solar.planning_sites.map((x,i) => 'solar:planning_sites:'+i);
+            }
+            const onClickStr = caseRefs.length > 0 
+              ? `openListModal('${s.name} 案場列表', '共 ${s.cases} 案、合計 ${s.mw.toFixed(2)} MW', ${JSON.stringify(caseRefs).replace(/"/g,'&quot;')}, '${s.color}')`
+              : '';
+            return `
+            <div class="rounded-xl border p-4 ${onClickStr ? 'mgmt-clickable' : ''}" 
+                 style="border-color:var(--border);background:${s.color}08;${onClickStr ? 'cursor:pointer' : ''}"
+                 ${onClickStr ? 'onclick="'+onClickStr+'"' : ''}
+                 ${onClickStr ? 'title="點擊查看 '+s.cases+' 個案場"' : ''}>
+              <div class="text-xs font-medium uppercase mb-1.5 flex items-center justify-between" style="color:${s.color};letter-spacing:0.06em">
+                <span>${s.name}</span>
+                ${onClickStr ? '<span style="color:var(--ink-muted);font-size:11px">↗</span>' : ''}
+              </div>
               <div class="flex items-baseline gap-1">
                 <span class="text-2xl font-bold tabular-nums font-serif-tc">${s.cases}</span>
                 <span class="text-xs" style="color:var(--ink-soft)">案</span>
@@ -2819,8 +2881,8 @@ function tplSolarDashboard() {
               <div class="text-sm font-semibold mt-1 tabular-nums" style="color:${s.color}">${s.mw.toFixed(2)} MW</div>
               <div class="progress-bar mt-2"><div class="progress-fill" style="width:${(s.mw/600*100)}%;background:${s.color}"></div></div>
               <div class="text-[11px] mt-1 tabular-nums" style="color:var(--ink-muted)">${(s.mw/600*100).toFixed(1)}% of 600MW 目標</div>
-            </div>
-          `).join('')}
+            </div>`;
+          }).join('')}
         </div>
       </div>
     </section>
@@ -2970,18 +3032,30 @@ function tplSolarCards() {
 
 // ==================== 區塊：小水力 ====================
 function tplHydroDashboard() {
-  const anomalies = DATA.hydro.sites.filter(s => s.is_anomaly);
+  // 帶上 _idx(原始 array 索引,供 openSiteModal 使用)
+  const sitesWithIdx = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
+  const anomalies = sitesWithIdx.filter(s => s.is_anomaly);
   const red = anomalies.filter(a => a.anomaly_level === 'red');
   const yellow = anomalies.filter(a => a.anomaly_level === 'yellow');
   
+  // typeMap: 類型 → 數量;typeRefs: 類型 → caseRefs
   const typeMap = {};
-  anomalies.forEach(a => { typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1; });
+  const typeRefs = {};
+  anomalies.forEach(a => { 
+    typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1;
+    if (!typeRefs[a.anomaly_type]) typeRefs[a.anomaly_type] = [];
+    typeRefs[a.anomaly_type].push('hydro:sites:' + a._idx);
+  });
   
+  // substageMap: 類別 → 統計;substageRefs: 類別 → caseRefs
   const substageMap = {};
-  DATA.hydro.sites.forEach(s => {
+  const substageRefs = {};
+  sitesWithIdx.forEach(s => {
     if (!substageMap[s.substage]) substageMap[s.substage] = { name: s.substage, cases: 0, kw: 0 };
     substageMap[s.substage].cases += 1;
     substageMap[s.substage].kw += s.capacity_kw;
+    if (!substageRefs[s.substage]) substageRefs[s.substage] = [];
+    substageRefs[s.substage].push('hydro:sites:' + s._idx);
   });
   const substageOrder = ['(A)小水力發電廠','(B)測試案場-已完成','(C)專案示範案場','(D)招標案場','(E)測試案場-推動中'];
   const substageData = substageOrder.map(n => substageMap[n]).filter(Boolean);
@@ -2995,10 +3069,29 @@ function tplHydroDashboard() {
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          ${tplKpi({ label: '紅燈案件', value: red.length, unit: '案', danger: true, sublabel: '累計影響 ' + red.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW' })}
-          ${tplKpi({ label: '黃燈案件', value: yellow.length, unit: '案', accent: 'var(--warning)', sublabel: '累計 ' + yellow.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW 進度延宕' })}
-          ${tplKpi({ label: '主要異常類型', value: Object.entries(typeMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || '-', accent: 'var(--warning)', sublabel: Object.entries(typeMap).sort((a,b)=>b[1]-a[1])[0]?.[1] + ' 案' })}
-          ${tplKpi({ label: '異常案件比', value: (anomalies.length/DATA.hydro.sites.length*100).toFixed(0) + '%', accent: 'var(--warning)', sublabel: '共 ' + anomalies.length + ' / ' + DATA.hydro.sites.length + ' 案場' })}
+          ${tplKpi({ 
+            label: '紅燈案件', value: red.length, unit: '案', danger: true,
+            sublabel: '累計影響 ' + red.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW',
+            onClick: 'openListModal(\'紅燈案件清單\', \'撤案/終止/暫緩/拆機組,共 ' + red.length + ' 案\', ' + JSON.stringify(red.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--alert)\')'
+          })}
+          ${tplKpi({ 
+            label: '黃燈案件', value: yellow.length, unit: '案', accent: 'var(--warning)',
+            sublabel: '累計 ' + yellow.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW 進度延宕',
+            onClick: 'openListModal(\'黃燈案件清單\', \'機組調整/展延,共 ' + yellow.length + ' 案\', ' + JSON.stringify(yellow.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--warning)\')'
+          })}
+          ${(() => {
+            const topType = Object.entries(typeMap).sort((a,b)=>b[1]-a[1])[0];
+            return tplKpi({ 
+              label: '主要異常類型', value: topType?.[0] || '-', accent: 'var(--warning)',
+              sublabel: (topType?.[1] || 0) + ' 案',
+              onClick: topType ? 'openListModal(\'主要異常類型:' + topType[0] + '\', \'此類型共 ' + topType[1] + ' 案\', ' + JSON.stringify(typeRefs[topType[0]] || []).replace(/"/g,'&quot;') + ', \'var(--warning)\')' : null
+            });
+          })()}
+          ${tplKpi({ 
+            label: '異常案件比', value: (anomalies.length/DATA.hydro.sites.length*100).toFixed(0) + '%', accent: 'var(--warning)',
+            sublabel: '共 ' + anomalies.length + ' / ' + DATA.hydro.sites.length + ' 案場',
+            onClick: 'openListModal(\'全部異常案場\', \'紅燈 ' + red.length + ' + 黃燈 ' + yellow.length + ' = ' + anomalies.length + ' 案\', ' + JSON.stringify(anomalies.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--warning)\')'
+          })}
         </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
@@ -3018,7 +3111,7 @@ function tplHydroDashboard() {
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${[...red, ...yellow].map(a => `
-            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'};background:${a.anomaly_level === 'red' ? '#fef2f2' : '#fff7ed'}" onclick="openMgmtModal('${a.mgmt}')">
+            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'};background:${a.anomaly_level === 'red' ? '#fef2f2' : '#fff7ed'}" onclick="openSiteModal('hydro:sites:${a._idx}')">
               <div class="flex items-start justify-between gap-2 mb-2">
                 <div class="flex-1">
                   <p class="font-semibold text-sm">${a.name}</p>
@@ -3048,9 +3141,19 @@ function tplHydroDashboard() {
         <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
           ${substageData.map(s => {
             const color = SUBSTAGE_COLORS[s.name] || 'var(--hydro)';
+            const refs = substageRefs[s.name] || [];
+            const onClickStr = refs.length > 0 
+              ? `openListModal('${s.name} 案場列表', '共 ${s.cases} 案、合計 ${s.kw.toFixed(1)} kW', ${JSON.stringify(refs).replace(/"/g,'&quot;')}, '${color}')`
+              : '';
             return `
-              <div class="rounded-xl border p-4" style="border-color:var(--border);background:${color}08">
-                <div class="text-xs font-medium mb-1.5" style="color:${color}">${s.name}</div>
+              <div class="rounded-xl border p-4 ${onClickStr ? 'mgmt-clickable' : ''}" 
+                   style="border-color:var(--border);background:${color}08;${onClickStr ? 'cursor:pointer' : ''}"
+                   ${onClickStr ? 'onclick="'+onClickStr+'"' : ''}
+                   ${onClickStr ? 'title="點擊查看 '+s.cases+' 個案場"' : ''}>
+                <div class="text-xs font-medium mb-1.5 flex items-center justify-between" style="color:${color}">
+                  <span>${s.name}</span>
+                  ${onClickStr ? '<span style="color:var(--ink-muted);font-size:11px">↗</span>' : ''}
+                </div>
                 <div class="flex items-baseline gap-1">
                   <span class="text-2xl font-bold tabular-nums font-serif-tc">${s.cases}</span>
                   <span class="text-xs" style="color:var(--ink-soft)">案</span>
@@ -3318,15 +3421,36 @@ function renderCharts() {
   if (state.tab === 'solar') {
     const cancelled = DATA.solar.cancelled_sites;
     const reasonMap = {};
-    cancelled.forEach(c => { const cat = categorizeReason(c.reason); reasonMap[cat] = (reasonMap[cat] || 0) + 1; });
+    const reasonRefsChart = {};  // 分類 → caseRefs
+    cancelled.forEach((c, i) => { 
+      const cat = categorizeReason(c.reason); 
+      reasonMap[cat] = (reasonMap[cat] || 0) + 1;
+      if (!reasonRefsChart[cat]) reasonRefsChart[cat] = [];
+      reasonRefsChart[cat].push('solar:cancelled_sites:' + i);
+    });
     const reasonData = Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]);
     
-    // 原因分類
+    // 原因分類(條形圖,點擊某條開啟列表 modal)
     const c1 = document.getElementById('chart-reason');
     if (c1) chartInstances.reason = new Chart(c1, {
       type: 'bar',
       data: { labels: reasonData.map(r=>r[0]), datasets: [{ data: reasonData.map(r=>r[1]), backgroundColor: '#dc2626', borderRadius: 4 }] },
-      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } } }
+      options: { 
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false },
+          tooltip: { callbacks: { afterLabel: () => '(點擊查看清單)' } }
+        }, 
+        scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } },
+        onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (e, els) => {
+          if (!els || els.length === 0) return;
+          const idx = els[0].index;
+          const reason = reasonData[idx][0];
+          const count = reasonData[idx][1];
+          openListModal('解約原因:' + reason, '此原因分類共 ' + count + ' 案', reasonRefsChart[reason] || [], 'var(--alert)');
+        }
+      }
     });
     
     // 年度趨勢
@@ -3461,7 +3585,111 @@ function openMgmtModal(name) {
 }
 
 function openSiteModal(caseRef) {
-  setState({ siteModal: { caseRef }, mgmtModal: null, vendorModal: null });
+  setState({ siteModal: { caseRef }, mgmtModal: null, vendorModal: null, listModal: null });
+}
+
+// 通用列表 Modal:顯示一群案場/管理處,點任一筆進對應的詳情
+function openListModal(title, subtitle, caseRefs, color) {
+  setState({ listModal: { title, subtitle, caseRefs, color: color || 'var(--solar)' }, siteModal: null, mgmtModal: null, vendorModal: null });
+}
+
+function tplListModal() {
+  if (!state.listModal) return '';
+  const { title, subtitle, caseRefs, color } = state.listModal;
+  
+  if (!caseRefs || caseRefs.length === 0) {
+    return `
+      <div class="modal-backdrop no-print" onclick="if(event.target===this)closeModal()">
+        <div class="modal-content" style="max-width:500px">
+          <div class="p-6">
+            <h3 class="text-lg font-bold mb-2" style="color:${color||'var(--solar)'}">${title}</h3>
+            ${subtitle ? `<p class="text-sm" style="color:var(--ink-soft)">${subtitle}</p>` : ''}
+            <p class="mt-4 text-center py-6" style="color:var(--ink-muted)">此分類目前沒有案場</p>
+            <button class="icon-btn mt-2" onclick="closeModal()">關閉</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  // 渲染每張小卡
+  const cards = caseRefs.map(ref => {
+    // 管理處
+    if (ref.startsWith('mgmt:')) {
+      const parts = ref.split(':');
+      const cat = parts[1];
+      const name = parts.slice(2).join(':');
+      return `
+        <div class="rounded-lg border p-3 mgmt-clickable" style="border-color:var(--border);background:white;cursor:pointer"
+             onclick="openMgmtModal('${name}')">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold text-sm">${name}管理處</p>
+              <p class="text-xs mt-0.5" style="color:var(--ink-soft)">${cat==='solar'?'太陽光電':'小水力'}</p>
+            </div>
+            <span style="color:var(--ink-muted);font-size:18px">→</span>
+          </div>
+        </div>
+      `;
+    }
+    
+    // 案場
+    const info = resolveCaseRef(ref);
+    if (!info || info.notFound || !info.row) {
+      return `<div class="rounded-lg border p-3" style="border-color:var(--border);background:#fef3c7;color:#92400e">⚠️ 找不到案場 (${ref})</div>`;
+    }
+    const r = info.row;
+    const isHydro = info.category === 'hydro';
+    const capStr = isHydro ? (r.capacity_kw + ' kW') : (r.capacity_mw + ' MW');
+    const stageLabel = isHydro 
+      ? (r.stage || '') + (r.substage ? ' · ' + r.substage : '')
+      : ({ completed_sites:'已完工', construction_sites:r.stage, admin_sites:'行政程序中', planning_sites:'規劃推動', cancelled_sites:'解約/撤案' })[info.kind] || info.kind;
+    
+    let borderColor = 'var(--border)';
+    let bgColor = 'white';
+    if (info.kind === 'cancelled_sites') { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
+    else if (info.kind === 'completed_sites') { borderColor = '#bbf7d0'; bgColor = '#f0fdf4'; }
+    else if (r.stage === '停工中' || (r.progress && r.progress.includes('撤案'))) { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
+    else if (r.stage === '待施工') { borderColor = '#fed7aa'; bgColor = '#fff7ed'; }
+    else if (r.is_anomaly && r.anomaly_level === 'red') { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
+    else if (r.is_anomaly && r.anomaly_level === 'yellow') { borderColor = '#fed7aa'; bgColor = '#fff7ed'; }
+    
+    return `
+      <div class="rounded-lg border p-3 mgmt-clickable" style="border-color:${borderColor};background:${bgColor};cursor:pointer"
+           onclick="openSiteModal('${ref}')">
+        <div class="flex items-start justify-between gap-2 mb-1">
+          <p class="font-semibold text-sm flex-1">${r.name || '(無名稱)'}</p>
+          <span class="text-xs px-1.5 py-0.5 rounded shrink-0" style="background:rgba(0,0,0,0.06);color:var(--ink-soft)">${stageLabel}</span>
+        </div>
+        <p class="text-xs" style="color:var(--ink-soft)">${r.mgmt||'-'}管理處${r.county?' · '+r.county:''}${r.township||''}</p>
+        <div class="flex items-center gap-3 text-xs mt-2 pt-2 border-t flex-wrap" style="border-color:rgba(0,0,0,0.06)">
+          <span style="color:var(--ink-soft)">容量 <strong>${capStr}</strong></span>
+          ${r.vendor ? `<span style="color:var(--ink-soft)">廠商 <strong>${(r.vendor||'').split('(')[0].trim()}</strong></span>` : ''}
+        </div>
+        ${r.progress ? `<p class="text-xs mt-1" style="color:var(--ink-muted)">進度:${r.progress}</p>` : ''}
+        ${r.reason ? `<p class="text-xs mt-1" style="color:#991b1b">原因:${r.reason}</p>` : ''}
+        ${r.operation ? `<p class="text-xs mt-1" style="color:var(--ink-soft)">辦理情形:${String(r.operation).substring(0, 60)}${String(r.operation).length > 60 ? '...' : ''}</p>` : ''}
+      </div>
+    `;
+  }).join('');
+  
+  return `
+    <div class="modal-backdrop no-print" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content" style="max-width:1000px;max-height:90vh;overflow:auto">
+        <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between" style="border-color:var(--border);z-index:1">
+          <div>
+            <h3 class="text-lg font-bold" style="color:${color}">${title}</h3>
+            ${subtitle ? `<p class="text-xs mt-1" style="color:var(--ink-soft)">${subtitle}</p>` : ''}
+            <p class="text-xs mt-1" style="color:var(--ink-muted)">共 ${caseRefs.length} 筆,點任一筆查看詳細資料</p>
+          </div>
+          <button class="icon-btn" onclick="closeModal()">✕ 關閉</button>
+        </div>
+        <div class="p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">${cards}</div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // 單一案場詳情 Modal — 重用 tplCaseRefEmbed 渲染主體
@@ -3872,15 +4100,16 @@ function deleteRow(idx) {
 // ==================== 編輯器 結束 ====================
 
 function closeModal() {
-  setState({ mgmtModal: null, vendorModal: null, siteModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null });
+  setState({ mgmtModal: null, vendorModal: null, siteModal: null, listModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null });
 }
 
 function printDashboard() {
   // 關閉 modal
-  if (state.mgmtModal !== null || state.vendorModal !== null || state.siteModal !== null) {
+  if (state.mgmtModal !== null || state.vendorModal !== null || state.siteModal !== null || state.listModal !== null) {
     state.mgmtModal = null;
     state.vendorModal = null;
     state.siteModal = null;
+    state.listModal = null;
     render();
   }
   
@@ -4192,6 +4421,7 @@ function render() {
     ${state.mgmtModal !== null ? tplMgmtModal(state.mgmtModal) : ''}
     ${state.vendorModal !== null ? tplVendorModal(state.vendorModal) : ''}
     ${state.siteModal !== null ? tplSiteDetailModal() : ''}
+    ${state.listModal !== null ? tplListModal() : ''}
     ${state.editor !== null ? tplEditorModal() : ''}
     ${state.importPreview ? tplImportPreviewModal() : ''}
     ${state.opinionEditor !== null ? tplOpinionEditorModal() : ''}
