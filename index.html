@@ -578,7 +578,7 @@ function tplCaseRefEmbed(caseRef) {
           <div><span style="color:#0369a1">完工年度:</span> <strong>${r.year||'-'}</strong></div>
           <div class="md:col-span-2"><span style="color:#0369a1">廠商:</span> <strong>${r.vendor || '-'}</strong></div>
           ${r.operation ? `<div class="md:col-span-2"><span style="color:#0369a1">辦理情形:</span> <strong>${String(r.operation).replace(/\n/g,' ')}</strong></div>` : ''}
-          ${r.is_anomaly ? `<div class="md:col-span-2"><span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;font-weight:600">⚠️ 異常標記:${r.anomaly_type || '異常'}</span></div>` : ''}
+          ${(typeof isRealAnomaly === 'function' ? isRealAnomaly(r) : r.is_anomaly) ? `<div class="md:col-span-2"><span style="background:${r.anomaly_level === 'yellow' ? '#fed7aa' : '#fee2e2'};color:${r.anomaly_level === 'yellow' ? '#92400e' : '#991b1b'};padding:1px 6px;border-radius:4px;font-weight:600">⚠️ 異常標記:${r.anomaly_type || '異常'}</span></div>` : ''}
         </div>
       </div>
     `;
@@ -2475,6 +2475,14 @@ function categorizeReason(r) {
   return '其他';
 }
 
+// 哪些 anomaly_type 其實不算異常(代表「測試完成正常退場/正常進行中」)
+// - 機組已拆除/待拆除:小水力測試完成後拆機組是正常流程
+// - 測試中/施工中:正常推動階段,不應視為異常
+const HYDRO_ANOMALY_EXCLUDE = ['機組已拆除', '機組待拆除', '測試中', '施工中'];
+function isRealAnomaly(s) {
+  return s.is_anomaly && !HYDRO_ANOMALY_EXCLUDE.includes(s.anomaly_type);
+}
+
 function getSolarAnomalies() {
   const arr = [];
   // 1. 施工中區塊: 停工中(紅) + 待施工(黃)
@@ -2506,16 +2514,17 @@ function getMgmtSolarSites(mgmt) {
 
 function getVendorAnalysis() {
   const map = {};
-  DATA.solar.cancelled_sites.forEach(c => {
+  DATA.solar.cancelled_sites.forEach((c, i) => {
     const v = c.vendor || '未填';
-    if (!map[v]) map[v] = { name: v, count: 0, mw: 0, reasons: {}, mgmts: new Set(), years: new Set(), cases: [] };
+    if (!map[v]) map[v] = { name: v, count: 0, mw: 0, reasons: {}, mgmts: new Set(), years: new Set(), cases: [], caseRefs: [] };
     map[v].count += 1;
     map[v].mw += c.capacity_mw;
     const cat = categorizeReason(c.reason);
     map[v].reasons[cat] = (map[v].reasons[cat] || 0) + 1;
     map[v].mgmts.add(c.mgmt);
     map[v].years.add(c.year);
-    map[v].cases.push(c);
+    map[v].cases.push({...c, _idx: i});
+    map[v].caseRefs.push('solar:cancelled_sites:' + i);
   });
   return Object.values(map)
     .map(v => ({ ...v, mgmts: Array.from(v.mgmts), years: Array.from(v.years).sort() }))
@@ -2845,21 +2854,17 @@ function tplSolarDashboard() {
       <div class="px-6 pb-6">
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
           ${DATA.solar.stages.map(s => {
-            // 各階段對應的 caseRefs 來源
-            // 已完工→completed_sites; 施工中(含待施工)→construction_sites; 完成招商→admin_sites; 評估待招商→planning_sites
-            let kind = '';
+            // 各階段精確匹配對應 array(避免「招商中」誤匹配到「評估待招商」)
             let caseRefs = [];
-            if (s.name.includes('已完工')) {
-              kind = 'completed_sites';
+            if (s.name === '已完工') {
               caseRefs = DATA.solar.completed_sites.map((x,i) => 'solar:completed_sites:'+i);
             } else if (s.name.includes('施工')) {
-              kind = 'construction_sites';
               caseRefs = DATA.solar.construction_sites.map((x,i) => 'solar:construction_sites:'+i);
-            } else if (s.name.includes('行政程序') || s.name.includes('完成招商')) {
-              kind = 'admin_sites';
+            } else if (s.name === '完成招商-行政程序申設中') {
               caseRefs = DATA.solar.admin_sites.map((x,i) => 'solar:admin_sites:'+i);
-            } else if (s.name.includes('評估') || s.name.includes('招商')) {
-              kind = 'planning_sites';
+            } else if (s.name === '招商中-公證簽約前') {
+              caseRefs = [];  // 此階段目前無案場
+            } else if (s.name === '評估待招商') {
               caseRefs = DATA.solar.planning_sites.map((x,i) => 'solar:planning_sites:'+i);
             }
             const onClickStr = caseRefs.length > 0 
@@ -3032,9 +3037,9 @@ function tplSolarCards() {
 
 // ==================== 區塊：小水力 ====================
 function tplHydroDashboard() {
-  // 帶上 _idx(原始 array 索引,供 openSiteModal 使用)
+  // 帶上 _idx + 用 isRealAnomaly 過濾掉「機組已拆除/待拆除」這類非異常
   const sitesWithIdx = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
-  const anomalies = sitesWithIdx.filter(s => s.is_anomaly);
+  const anomalies = sitesWithIdx.filter(s => isRealAnomaly(s));
   const red = anomalies.filter(a => a.anomaly_level === 'red');
   const yellow = anomalies.filter(a => a.anomaly_level === 'yellow');
   
@@ -3463,13 +3468,30 @@ function renderCharts() {
       options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } } }
     });
     
-    // 廠商
+    // 廠商解約分析條形圖(可點某廠商查看其所有解約案場)
     const vendors = getVendorAnalysis().slice(0, 8);
     const c3 = document.getElementById('chart-vendor-mw');
     if (c3) chartInstances.vendor = new Chart(c3, {
       type: 'bar',
       data: { labels: vendors.map(v => v.name.length > 14 ? v.name.substring(0,14)+'…' : v.name), datasets: [{ label: '流失容量 (MW)', data: vendors.map(v => parseFloat(v.mw.toFixed(2))), backgroundColor: '#d97706', borderRadius: 4 }] },
-      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.x + ' MW (' + vendors[ctx.dataIndex].count + ' 案)' } } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: { ...baseFont, size: 10 } } } } }
+      options: { 
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false }, 
+          tooltip: { callbacks: { 
+            label: ctx => ctx.parsed.x + ' MW (' + vendors[ctx.dataIndex].count + ' 案)',
+            afterLabel: () => '(點擊查看清單)'
+          } } 
+        }, 
+        scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: { ...baseFont, size: 10 } } } },
+        onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (e, els) => {
+          if (!els || els.length === 0) return;
+          const idx = els[0].index;
+          const v = vendors[idx];
+          openListModal('廠商:' + v.name, '解約 ' + v.count + ' 案、流失 ' + v.mw.toFixed(2) + ' MW', v.caseRefs || [], 'var(--warning)');
+        }
+      }
     });
     
     // 達成率 doughnut
@@ -3500,16 +3522,39 @@ function renderCharts() {
   }
   
   if (state.tab === 'hydro') {
-    const anomalies = DATA.hydro.sites.filter(s => s.is_anomaly);
+    // 用 isRealAnomaly 過濾「機組已拆除/待拆除」等非真異常,並帶上 _idx
+    const sitesWithIdxH = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
+    const anomalies = sitesWithIdxH.filter(s => isRealAnomaly(s));
     const typeMap = {};
-    anomalies.forEach(a => { typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1; });
+    const typeRefsChart = {};  // 類型 → caseRefs
+    anomalies.forEach(a => { 
+      typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1; 
+      if (!typeRefsChart[a.anomaly_type]) typeRefsChart[a.anomaly_type] = [];
+      typeRefsChart[a.anomaly_type].push('hydro:sites:' + a._idx);
+    });
     const typeData = Object.entries(typeMap).sort((a,b)=>b[1]-a[1]);
     
+    // 小水力異常類型條形圖,加 onClick
     const c1 = document.getElementById('chart-hydro-type');
     if (c1) chartInstances.hydroType = new Chart(c1, {
       type: 'bar',
       data: { labels: typeData.map(t=>t[0]), datasets: [{ data: typeData.map(t=>t[1]), backgroundColor: '#dc2626', borderRadius: 4 }] },
-      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } } }
+      options: { 
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { 
+          legend: { display: false },
+          tooltip: { callbacks: { afterLabel: () => '(點擊查看清單)' } }
+        }, 
+        scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } },
+        onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick: (e, els) => {
+          if (!els || els.length === 0) return;
+          const idx = els[0].index;
+          const typeName = typeData[idx][0];
+          const count = typeData[idx][1];
+          openListModal('異常類型:' + typeName, '此類型共 ' + count + ' 案', typeRefsChart[typeName] || [], 'var(--alert)');
+        }
+      }
     });
     
     const mgmtA = DATA.hydro.mgmt.filter(m=>m.anomaly_cases>0).sort((a,b)=>b.anomaly_cases-a.anomaly_cases);
@@ -3581,7 +3626,7 @@ function handleCompositionEnd(input, path) {
 }
 
 function openMgmtModal(name) {
-  setState({ mgmtModal: name, vendorModal: null, siteModal: null });
+  setState({ mgmtModal: name, vendorModal: null, siteModal: null, listModal: null });
 }
 
 function openSiteModal(caseRef) {
@@ -3651,8 +3696,8 @@ function tplListModal() {
     else if (info.kind === 'completed_sites') { borderColor = '#bbf7d0'; bgColor = '#f0fdf4'; }
     else if (r.stage === '停工中' || (r.progress && r.progress.includes('撤案'))) { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
     else if (r.stage === '待施工') { borderColor = '#fed7aa'; bgColor = '#fff7ed'; }
-    else if (r.is_anomaly && r.anomaly_level === 'red') { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
-    else if (r.is_anomaly && r.anomaly_level === 'yellow') { borderColor = '#fed7aa'; bgColor = '#fff7ed'; }
+    else if (isRealAnomaly(r) && r.anomaly_level === 'red') { borderColor = '#fecaca'; bgColor = '#fef2f2'; }
+    else if (isRealAnomaly(r) && r.anomaly_level === 'yellow') { borderColor = '#fed7aa'; bgColor = '#fff7ed'; }
     
     return `
       <div class="rounded-lg border p-3 mgmt-clickable" style="border-color:${borderColor};background:${bgColor};cursor:pointer"
