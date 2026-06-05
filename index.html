@@ -238,6 +238,57 @@ async function fetchOpinionsFromServer() {
   }
 }
 
+// 從同目錄抓 data.json(若有,代表這是「公開部署版」)
+// 抓到後寫進 localStorage,讓所有開網頁的人看到一樣的最新資料
+async function fetchDataFromServer() {
+  const url = 'data.json?t=' + Date.now();
+  try {
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    // 驗證結構
+    if (!data || typeof data !== 'object' || !data.solar || !data.hydro) return null;
+    // 寫進 localStorage 並更新 DATA / ORIGINAL_DATA
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    DATA = data;
+    ORIGINAL_DATA = JSON.parse(JSON.stringify(data));
+    try { recomputeSummaries(); } catch(e) {}
+    return data;
+  } catch(e) {
+    // 沒 data.json 是正常的(舊環境/未發布雲端版),靜默
+    return null;
+  }
+}
+
+// 匯出 DATA 為 data.json 給使用者下載(供上傳到 GitHub 與他人同步)
+function exportDataForDeploy() {
+  const json = JSON.stringify(DATA, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'data.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  
+  const solarCount = (DATA.solar.completed_sites||[]).length + (DATA.solar.construction_sites||[]).length 
+    + (DATA.solar.admin_sites||[]).length + (DATA.solar.planning_sites||[]).length 
+    + (DATA.solar.cancelled_sites||[]).length;
+  const hydroCount = (DATA.hydro.sites||[]).length;
+  const sizeKb = Math.round(json.length / 1024);
+  
+  let msg = '✅ 已匯出 data.json\n';
+  msg += '檔案大小:約 ' + sizeKb + ' KB\n';
+  msg += '太陽光電:' + solarCount + ' 案 / 小水力:' + hydroCount + ' 案\n';
+  msg += '資料來源:' + (DATA.meta?.source || '(未填)') + '\n\n';
+  msg += '📋 後續步驟:\n';
+  msg += '1. 把 data.json 上傳到 GitHub repo(跟 index.html 同目錄,直接覆蓋舊的)\n';
+  msg += '2. Commit & Push\n';
+  msg += '3. GitHub Pages 約 1 分鐘後生效\n';
+  msg += '4. 其他人重新整理就會看到最新版資料';
+  alert(msg);
+}
+
 // 匯出輿情 JSON 給使用者下載(供上傳到 GitHub)
 // 自動把 PDF base64 抽掉(太大、隱私問題),只保留結構性資料
 function exportOpinionsJson() {
@@ -2441,11 +2492,12 @@ function getSolarAnomalies() {
 }
 
 function getMgmtSolarSites(mgmt) {
+  // 先 map 加 _kind/_idx,再 filter,確保 _idx 是原始 array 的索引(關鍵:openSiteModal 需要)
   return [
-    ...DATA.solar.completed_sites.filter(s => s.mgmt === mgmt).map(s => ({...s, _stage: '已完工'})),
-    ...DATA.solar.construction_sites.filter(s => s.mgmt === mgmt).map(s => ({...s, _stage: s.stage})),
-    ...DATA.solar.admin_sites.filter(s => s.mgmt === mgmt).map(s => ({...s, _stage: '行政程序中'})),
-    ...DATA.solar.planning_sites.filter(s => s.mgmt === mgmt).map(s => ({...s, _stage: '規劃推動'}))
+    ...DATA.solar.completed_sites.map((s,i) => ({...s, _kind:'completed_sites', _idx:i, _stage:'已完工'})).filter(s => s.mgmt === mgmt),
+    ...DATA.solar.construction_sites.map((s,i) => ({...s, _kind:'construction_sites', _idx:i, _stage:s.stage})).filter(s => s.mgmt === mgmt),
+    ...DATA.solar.admin_sites.map((s,i) => ({...s, _kind:'admin_sites', _idx:i, _stage:'行政程序中'})).filter(s => s.mgmt === mgmt),
+    ...DATA.solar.planning_sites.map((s,i) => ({...s, _kind:'planning_sites', _idx:i, _stage:'規劃推動'})).filter(s => s.mgmt === mgmt)
   ];
 }
 
@@ -3106,7 +3158,7 @@ function tplHydroCards() {
 // ==================== 管理處 Modal ====================
 function tplMgmtModal(name) {
   const solarSites = getMgmtSolarSites(name);
-  const hydroSites = DATA.hydro.sites.filter(s => s.mgmt === name);
+  const hydroSites = DATA.hydro.sites.map((s,i)=>({...s,_idx:i})).filter(s => s.mgmt === name);
   const solarMgmt = DATA.solar.mgmt.find(m => m.name === name);
   const hydroMgmt = DATA.hydro.mgmt.find(m => m.name === name);
   
@@ -3218,7 +3270,10 @@ function tplHeader() {
           </div>
           <div class="flex items-center gap-3 flex-wrap">
             <button class="icon-btn no-print" onclick="openEditor('solar.completed_sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e">✏️ 編輯資料</button>
-            <button class="icon-btn no-print" onclick="exportJSON()">💾 匯出 JSON</button>
+            <button class="icon-btn no-print" onclick="exportJSON()" title="匯出 DATA 為日期檔名(本機備份用)">💾 匯出 JSON</button>
+            <button class="icon-btn no-print" onclick="exportDataForDeploy()" 
+                    style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
+                    title="匯出 data.json(供上傳到 GitHub 與他人同步)">☁️ 同步至雲端</button>
             <label class="icon-btn no-print" style="cursor:pointer">📥 匯入<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
@@ -4154,7 +4209,9 @@ function render() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // 先嘗試從伺服器抓取最新輿情資料
+  // 1. 先嘗試從伺服器抓取最新「儀表板資料」(data.json)
+  try { await fetchDataFromServer(); } catch(e) { console.warn('data.json 載入失敗', e); }
+  // 2. 再抓輿情資料
   try { await fetchOpinionsFromServer(); } catch(e) { console.warn('opinions.json 載入失敗', e); }
   render();
 });
