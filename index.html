@@ -2548,6 +2548,7 @@ const state = {
   vendorModal: null,
   siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
   listModal: null,   // { title, subtitle, caseRefs:[], color }
+  expandedSolarSec: { anomaly: false, vendor: false, target: false },
   editor: null,        // { section: 'solar.completed_sites' | 'hydro.sites' | 'solar.mgmt' | ..., search: '' }
   editorRow: null,     // 編輯中的 row index (null = 新增, 數字 = 編輯)
   importPreview: null,
@@ -2901,11 +2902,72 @@ function tplSolarDashboard() {
   // 廠商分析
   const vendorAnalysis = getVendorAnalysis().slice(0, 8);
   
+  // 摘要數字(供入口卡顯示)
+  const _achievementPct = (DATA.solar.summary.total_completed_mw / DATA.solar.summary.target_mw * 100).toFixed(1);
+  const _cancelledCount = DATA.solar.cancelled_sites.length;
+  const _cancelledMwTotal = DATA.solar.cancelled_sites.reduce((a,c)=>a+(c.capacity_mw||0),0);
+  const _vendorCount = new Set(DATA.solar.cancelled_sites.map(c=>c.vendor||'').filter(Boolean)).size;
+  
   return `
-    <!-- 1. 異常警示 -->
+    <!-- 0. 深入分析入口卡(三張小卡,點擊展開對應區塊)-->
+    <section class="mt-6">
+      <div class="mb-3">
+        <p class="text-xs font-medium" style="color:var(--ink-soft);letter-spacing:0.08em">深入分析 / 點擊開啟子頁面</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <button class="rounded-xl border p-4 text-left transition-all" 
+                style="background:white;border-color:var(--border);cursor:pointer"
+                onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';this.style.transform='translateY(-1px)';this.style.borderColor='var(--solar)'"
+                onmouseout="this.style.boxShadow='';this.style.transform='';this.style.borderColor='var(--border)'"
+                onclick="toggleSolarSec('target', true)">
+          <div class="flex items-center gap-2 mb-1">
+            <span style="color:var(--solar);font-size:18px">${ICON.target}</span>
+            <span class="font-bold text-sm">115 年目標達成率</span>
+            ${state.expandedSolarSec.target ? '<span class="ml-auto text-xs" style="color:var(--solar)">已展開</span>' : ''}
+          </div>
+          <p class="text-xs" style="color:var(--ink-soft)">
+            ${_achievementPct}% (${DATA.solar.summary.total_completed_mw.toFixed(2)} / ${DATA.solar.summary.target_mw} MW)
+          </p>
+        </button>
+        
+        <button class="rounded-xl border p-4 text-left transition-all"
+                style="background:white;border-color:var(--border);cursor:pointer"
+                onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';this.style.transform='translateY(-1px)';this.style.borderColor='var(--alert)'"
+                onmouseout="this.style.boxShadow='';this.style.transform='';this.style.borderColor='var(--border)'"
+                onclick="toggleSolarSec('anomaly', true)">
+          <div class="flex items-center gap-2 mb-1">
+            <span style="color:var(--alert);font-size:18px">${ICON.chart}</span>
+            <span class="font-bold text-sm">累積撤案與原因分析</span>
+            ${state.expandedSolarSec.anomaly ? '<span class="ml-auto text-xs" style="color:var(--alert)">已展開</span>' : ''}
+          </div>
+          <p class="text-xs" style="color:var(--ink-soft)">
+            ${_cancelledCount} 案 / ${_cancelledMwTotal.toFixed(1)} MW 流失
+          </p>
+        </button>
+        
+        <button class="rounded-xl border p-4 text-left transition-all"
+                style="background:white;border-color:var(--border);cursor:pointer"
+                onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';this.style.transform='translateY(-1px)';this.style.borderColor='var(--warning)'"
+                onmouseout="this.style.boxShadow='';this.style.transform='';this.style.borderColor='var(--border)'"
+                onclick="toggleSolarSec('vendor', true)">
+          <div class="flex items-center gap-2 mb-1">
+            <span style="color:var(--warning);font-size:18px">${ICON.store}</span>
+            <span class="font-bold text-sm">廠商解約分析</span>
+            ${state.expandedSolarSec.vendor ? '<span class="ml-auto text-xs" style="color:var(--warning)">已展開</span>' : ''}
+          </div>
+          <p class="text-xs" style="color:var(--ink-soft)">
+            ${_vendorCount} 家廠商解約紀錄
+          </p>
+        </button>
+      </div>
+    </section>
+    
+    <!-- 1. 異常警示(可摺疊)-->
+    ${state.expandedSolarSec.anomaly ? `
     <section id="sec-solar-anomaly" class="section-card">
-      <div class="px-6 pt-6">
-        ${tplSectionHeader({ icon: ICON.alert, title: '異常警示案件', subtitle: '當前活躍異常（停工／撤案）與歷年累計解約資料', accent: 'var(--alert)', sectionId: 'sec-solar-anomaly', exportLabel: '光電-異常警示' })}
+      <div class="px-6 pt-6 flex items-start justify-between gap-3">
+        <div class="flex-1">${tplSectionHeader({ icon: ICON.alert, title: '異常警示案件', subtitle: '當前活躍異常(停工／撤案)與歷年累計解約資料', accent: 'var(--alert)', sectionId: 'sec-solar-anomaly', exportLabel: '光電-異常警示' })}</div>
+        <button class="icon-btn no-print shrink-0" onclick="toggleSolarSec('anomaly', false)" title="收起此區塊" style="background:#fef3c7;border-color:#fde68a">✕ 收起</button>
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -2978,10 +3040,14 @@ function tplSolarDashboard() {
       </div>
     </section>
     
-    <!-- 2. 廠商解約分析 (新增) -->
+    ` : ''}
+    
+    <!-- 2. 廠商解約分析(可摺疊)-->
+    ${state.expandedSolarSec.vendor ? `
     <section id="sec-solar-vendor" class="section-card mt-8">
-      <div class="px-6 pt-6">
-        ${tplSectionHeader({ icon: ICON.store, title: '廠商解約分析', subtitle: '從廠商維度切入歷年解約撤案：誰流失最多容量？誰最常被哪類問題卡住？', accent: 'var(--warning)', sectionId: 'sec-solar-vendor', exportLabel: '光電-廠商解約分析' })}
+      <div class="px-6 pt-6 flex items-start justify-between gap-3">
+        <div class="flex-1">${tplSectionHeader({ icon: ICON.store, title: '廠商解約分析', subtitle: '從廠商維度切入歷年解約撤案:誰流失最多容量?誰最常被哪類問題卡住?', accent: 'var(--warning)', sectionId: 'sec-solar-vendor', exportLabel: '光電-廠商解約分析' })}</div>
+        <button class="icon-btn no-print shrink-0" onclick="toggleSolarSec('vendor', false)" title="收起此區塊" style="background:#fef3c7;border-color:#fde68a">✕ 收起</button>
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
@@ -3048,6 +3114,8 @@ function tplSolarDashboard() {
       </div>
     </section>
     
+    ` : ''}
+    
     <!-- 3. 階段分布 -->
     <section id="sec-solar-stage" class="section-card mt-8">
       <div class="px-6 pt-6">
@@ -3094,10 +3162,12 @@ function tplSolarDashboard() {
       </div>
     </section>
     
-    <!-- 4. 目標達成率 -->
+    <!-- 4. 目標達成率(可摺疊)-->
+    ${state.expandedSolarSec.target ? `
     <section id="sec-solar-target" class="section-card mt-8">
-      <div class="px-6 pt-6">
-        ${tplSectionHeader({ icon: ICON.target, title: '115 年目標達成率', subtitle: '累計完工容量 vs 至 115 年總目標 600 MW', accent: 'var(--solar)', sectionId: 'sec-solar-target', exportLabel: '光電-目標達成率' })}
+      <div class="px-6 pt-6 flex items-start justify-between gap-3">
+        <div class="flex-1">${tplSectionHeader({ icon: ICON.target, title: '115 年目標達成率', subtitle: '累計完工容量 vs 至 115 年總目標 600 MW', accent: 'var(--solar)', sectionId: 'sec-solar-target', exportLabel: '光電-目標達成率' })}</div>
+        <button class="icon-btn no-print shrink-0" onclick="toggleSolarSec('target', false)" title="收起此區塊" style="background:#fef3c7;border-color:#fde68a">✕ 收起</button>
       </div>
       <div class="px-6 pb-6">
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -3135,6 +3205,8 @@ function tplSolarDashboard() {
         </div>
       </div>
     </section>
+    
+    ` : ''}
     
     <!-- 4.5 各管理處案場數總覽表 -->
     <section id="sec-solar-mgmt-table" class="section-card mt-8">
@@ -3848,6 +3920,20 @@ function handleCompositionEnd(input, path) {
 
 function openMgmtModal(name) {
   setState({ mgmtModal: name, vendorModal: null, siteModal: null, listModal: null });
+}
+
+// 切換太陽光電「深入分析」三區塊展開狀態 + 自動 scroll
+function toggleSolarSec(key, forceOpen) {
+  const cur = state.expandedSolarSec[key];
+  const next = forceOpen !== undefined ? forceOpen : !cur;
+  state.expandedSolarSec = { ...state.expandedSolarSec, [key]: next };
+  render();
+  if (next) {
+    setTimeout(() => {
+      const el = document.getElementById('sec-solar-' + key);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
 }
 
 function openSiteModal(caseRef) {
