@@ -12,6 +12,9 @@
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
+  .mgmt-table th, .mgmt-table td { padding: 6px 8px; border: 1px solid var(--border); }
+  .mgmt-table td:first-child { font-weight: 500; padding-left: 12px; }
+
   :root {
     --ink: #0f172a;
     --ink-soft: #475569;
@@ -2371,6 +2374,9 @@ function tplImportPreviewModal() {
 }
 
 // 重算彙總(增刪案場後呼叫)
+// 14 個標準管理處(全域常數)
+const STANDARD_MGMTS = ['桃園','石門','新竹','苗栗','臺中','南投','彰化','雲林','嘉南','高雄','屏東','宜蘭','花蓮','臺東'];
+
 function recomputeSummaries() {
   // 太陽光電 summary
   const s = DATA.solar;
@@ -2416,7 +2422,7 @@ function recomputeSummaries() {
   h.summary.in_progress_cases = inProgressHydro.length;
   h.summary.in_progress_capacity_kw = parseFloat(inProgressHydro.reduce((a,c)=>a+(parseFloat(c.capacity_kw)||0),0).toFixed(2));
   // 小水力各管理處 - 確保 14 處全列出(與太陽光電一致)
-  const STANDARD_MGMTS = ['桃園','石門','新竹','苗栗','臺中','南投','彰化','雲林','嘉南','高雄','屏東','宜蘭','花蓮','臺東'];
+  // STANDARD_MGMTS 已提升為全域常數
   const existingNames = new Set(h.mgmt.map(m=>m.name));
   // 先補上 sites 中出現但 mgmt 沒收錄的管理處(以及缺漏的標準管理處)
   const allMgmtNames = new Set([...existingNames, ...STANDARD_MGMTS]);
@@ -2675,6 +2681,202 @@ function tplHydroCard(s) {
 }
 
 // ==================== 區塊：太陽光電 ====================
+// ===== 各管理處案場數總覽表(類似 Excel 格式)=====
+// 太陽光電:管理處 | 營運(已完工) | 施工 | 申設(行政) | 規劃推動 | 合計
+function tplSolarMgmtTable() {
+  // 14 個管理處(STANDARD_MGMTS 順序)+ 總計
+  const mgmts = STANDARD_MGMTS;  // ['桃園','石門','新竹',...]
+  
+  // 統計各管理處各階段案數
+  const stats = {};
+  mgmts.forEach(m => stats[m] = { 
+    operating: { count: 0, refs: [] },
+    construction: { count: 0, refs: [] },
+    admin: { count: 0, refs: [] },
+    planning: { count: 0, refs: [] }
+  });
+  
+  DATA.solar.completed_sites.forEach((s, i) => {
+    if (stats[s.mgmt]) {
+      stats[s.mgmt].operating.count++;
+      stats[s.mgmt].operating.refs.push('solar:completed_sites:' + i);
+    }
+  });
+  DATA.solar.construction_sites.forEach((s, i) => {
+    if (stats[s.mgmt]) {
+      stats[s.mgmt].construction.count++;
+      stats[s.mgmt].construction.refs.push('solar:construction_sites:' + i);
+    }
+  });
+  DATA.solar.admin_sites.forEach((s, i) => {
+    if (stats[s.mgmt]) {
+      stats[s.mgmt].admin.count++;
+      stats[s.mgmt].admin.refs.push('solar:admin_sites:' + i);
+    }
+  });
+  DATA.solar.planning_sites.forEach((s, i) => {
+    if (stats[s.mgmt]) {
+      stats[s.mgmt].planning.count++;
+      stats[s.mgmt].planning.refs.push('solar:planning_sites:' + i);
+    }
+  });
+  
+  // 容量總計
+  const totalCases = DATA.solar.completed_sites.length + DATA.solar.construction_sites.length 
+    + DATA.solar.admin_sites.length + DATA.solar.planning_sites.length;
+  const totalMw = (DATA.solar.summary.total_completed_mw || 0) 
+    + DATA.solar.construction_sites.reduce((a,s)=>a+(s.capacity_mw||0),0)
+    + DATA.solar.admin_sites.reduce((a,s)=>a+(s.capacity_mw||0),0)
+    + DATA.solar.planning_sites.reduce((a,s)=>a+(s.capacity_mw||0),0);
+  
+  // 各欄總計
+  const colTotals = {
+    operating: DATA.solar.completed_sites.length,
+    construction: DATA.solar.construction_sites.length,
+    admin: DATA.solar.admin_sites.length,
+    planning: DATA.solar.planning_sites.length
+  };
+  
+  // 每列 cell 工具:可點擊
+  function cell(n, refs, label, mgmt) {
+    if (n === 0) return `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
+    const safe = JSON.stringify(refs).replace(/"/g,'&quot;');
+    return `<td class="text-center tabular-nums" style="cursor:pointer;color:var(--solar);font-weight:600" 
+              title="點擊查看 ${n} 個案場" 
+              onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background=''"
+              onclick="openListModal('${mgmt}管理處・${label}', '共 ${n} 案', ${safe}, 'var(--solar)')">${n}</td>`;
+  }
+  
+  // 渲染各列
+  const rows = mgmts.map(m => {
+    const s = stats[m];
+    const total = s.operating.count + s.construction.count + s.admin.count + s.planning.count;
+    const allRefs = [...s.operating.refs, ...s.construction.refs, ...s.admin.refs, ...s.planning.refs];
+    const totalCell = total > 0 
+      ? `<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fef3c7" 
+           onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'"
+           onclick="openMgmtModal('${m}')">${total}</td>`
+      : `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
+    return `
+      <tr>
+        <td class="font-medium" style="cursor:pointer;color:var(--solar)" onclick="openMgmtModal('${m}')" title="點擊查看 ${m}管理處 完整資料">${m}</td>
+        ${cell(s.operating.count, s.operating.refs, '營運階段', m)}
+        ${cell(s.construction.count, s.construction.refs, '施工階段', m)}
+        ${cell(s.admin.count, s.admin.refs, '申設階段', m)}
+        ${cell(s.planning.count, s.planning.refs, '規劃推動階段', m)}
+        ${totalCell}
+      </tr>`;
+  }).join('');
+  
+  return `
+    <table class="w-full text-sm border-collapse mgmt-table">
+      <thead>
+        <tr style="background:#fef3c7">
+          <th class="px-3 py-2 border" style="border-color:var(--border);width:14%">管理處</th>
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">營運階段<div class="text-xs font-normal" style="color:var(--ink-soft)">已完工</div></th>
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">施工階段<div class="text-xs font-normal" style="color:var(--ink-soft)">施工/待施工/停工</div></th>
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">申設階段<div class="text-xs font-normal" style="color:var(--ink-soft)">行政程序</div></th>
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">規劃推動階段<div class="text-xs font-normal" style="color:var(--ink-soft)">評估招商</div></th>
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#fde68a">合計</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr style="background:#fef3c7;font-weight:700">
+          <td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.operating}</td>
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.construction}</td>
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.admin}</td>
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.planning}</td>
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#fde68a">${totalCases}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-xs mt-3" style="color:var(--ink-muted)">※ 點任一數字查看該案場列表;點管理處名稱查看完整資料;不含歷年解約撤案 ${DATA.solar.cancelled_sites.length} 案</p>
+  `;
+}
+
+// 小水力:管理處 × 5 substage 分類
+function tplHydroMgmtTable() {
+  const mgmts = STANDARD_MGMTS;
+  const subcategories = ['(A)小水力發電廠', '(B)測試案場-已完成', '(C)專案示範案場', '(D)招標案場', '(E)測試案場-推動中'];
+  
+  // 統計:stats[mgmt][substage] = { count, refs }
+  const stats = {};
+  mgmts.forEach(m => { 
+    stats[m] = {}; 
+    subcategories.forEach(sub => stats[m][sub] = { count: 0, refs: [] });
+  });
+  
+  DATA.hydro.sites.forEach((s, i) => {
+    if (stats[s.mgmt] && stats[s.mgmt][s.substage]) {
+      stats[s.mgmt][s.substage].count++;
+      stats[s.mgmt][s.substage].refs.push('hydro:sites:' + i);
+    }
+  });
+  
+  // 各欄總計
+  const colTotals = {};
+  subcategories.forEach(sub => {
+    colTotals[sub] = DATA.hydro.sites.filter(s => s.substage === sub).length;
+  });
+  
+  // 容量 / 案數
+  const totalCases = DATA.hydro.sites.length;
+  const totalKw = DATA.hydro.sites.reduce((a, s) => a + (s.capacity_kw || 0), 0);
+  
+  function cell(n, refs, label, mgmt) {
+    if (n === 0) return `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
+    const safe = JSON.stringify(refs).replace(/"/g,'&quot;');
+    return `<td class="text-center tabular-nums" style="cursor:pointer;color:var(--hydro);font-weight:600"
+              title="點擊查看 ${n} 個案場"
+              onmouseover="this.style.background='#ccfbf1'" onmouseout="this.style.background=''"
+              onclick="openListModal('${mgmt}管理處・${label}', '共 ${n} 案', ${safe}, 'var(--hydro)')">${n}</td>`;
+  }
+  
+  const rows = mgmts.map(m => {
+    const s = stats[m];
+    let total = 0;
+    let allRefs = [];
+    subcategories.forEach(sub => {
+      total += s[sub].count;
+      allRefs = allRefs.concat(s[sub].refs);
+    });
+    const totalCell = total > 0
+      ? `<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#d1fae5"
+           onmouseover="this.style.background='#a7f3d0'" onmouseout="this.style.background='#d1fae5'"
+           onclick="openMgmtModal('${m}')">${total}</td>`
+      : `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
+    return `
+      <tr>
+        <td class="font-medium" style="cursor:pointer;color:var(--hydro)" onclick="openMgmtModal('${m}')" title="點擊查看 ${m}管理處 完整資料">${m}</td>
+        ${subcategories.map(sub => cell(s[sub].count, s[sub].refs, sub, m)).join('')}
+        ${totalCell}
+      </tr>`;
+  }).join('');
+  
+  return `
+    <table class="w-full text-sm border-collapse mgmt-table">
+      <thead>
+        <tr style="background:#d1fae5">
+          <th class="px-3 py-2 border" style="border-color:var(--border);width:12%">管理處</th>
+          ${subcategories.map(sub => `<th class="px-3 py-2 border text-center" style="border-color:var(--border)">${sub}</th>`).join('')}
+          <th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#a7f3d0">合計</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr style="background:#d1fae5;font-weight:700">
+          <td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>
+          ${subcategories.map(sub => `<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals[sub]}</td>`).join('')}
+          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#a7f3d0">${totalCases}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-xs mt-3" style="color:var(--ink-muted)">※ 點任一數字查看該案場列表;點管理處名稱查看完整資料;總計 ${totalCases} 案、${totalKw.toFixed(0)} kW(若需要 9 欄細分需匯入新版資料)</p>
+  `;
+}
+
 function tplSolarDashboard() {
   const anomalies = getSolarAnomalies();
   const cancelled = DATA.solar.cancelled_sites;
@@ -2934,6 +3136,16 @@ function tplSolarDashboard() {
       </div>
     </section>
     
+    <!-- 4.5 各管理處案場數總覽表 -->
+    <section id="sec-solar-mgmt-table" class="section-card mt-8">
+      <div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.building, title: '各管理處案場數總覽', subtitle: '【太陽光電】(' + (DATA.solar.completed_sites.length + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length + DATA.solar.planning_sites.length) + ' 案 / ' + (DATA.solar.summary.total_completed_mw + DATA.solar.construction_sites.reduce((a,s)=>a+(s.capacity_mw||0),0) + DATA.solar.admin_sites.reduce((a,s)=>a+(s.capacity_mw||0),0) + DATA.solar.planning_sites.reduce((a,s)=>a+(s.capacity_mw||0),0)).toFixed(2) + ' MW)', accent: 'var(--solar)', sectionId: 'sec-solar-mgmt-table', exportLabel: '光電-管理處案場數' })}
+      </div>
+      <div class="px-6 pb-6 overflow-x-auto">
+        ${tplSolarMgmtTable()}
+      </div>
+    </section>
+
     <!-- 5. 管理處綜合 -->
     <section id="sec-solar-mgmt" class="section-card mt-8">
       <div class="px-6 pt-6">
@@ -3170,6 +3382,15 @@ function tplHydroDashboard() {
       </div>
     </section>
     
+    <section id="sec-hydro-mgmt-table" class="section-card mt-8">
+      <div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.building, title: '各管理處案場數總覽', subtitle: '【小水力】(' + DATA.hydro.sites.length + ' 案 / ' + DATA.hydro.sites.reduce((a,s)=>a+(s.capacity_kw||0),0).toFixed(0) + ' kW)', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt-table', exportLabel: '小水力-管理處案場數' })}
+      </div>
+      <div class="px-6 pb-6 overflow-x-auto">
+        ${tplHydroMgmtTable()}
+      </div>
+    </section>
+
     <section id="sec-hydro-mgmt" class="section-card mt-8">
       <div class="px-6 pt-6">
         ${tplSectionHeader({ icon: ICON.building, title: '各管理處推動概況', subtitle: '按容量排序，可點任一處深入查看', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt', exportLabel: '小水力-管理處概況' })}
