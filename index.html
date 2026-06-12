@@ -169,6 +169,23 @@ const ORIGINAL_DATA = {"updated_at":"2026-05-14","solar":{"summary":{"total_comp
 // ==================== 資料持久化 (新增) ====================
 const STORAGE_KEY = 'dashboard_data_v1';
 const OPINION_KEY = 'dashboard_opinion_v1';   // 輿情監控資料
+const FILLING_BASE_KEY = 'dashboard_filling_base_v1';  // 填報基底資料(5 個 sheet)
+const MONTH_PROJECTS_KEY = 'dashboard_month_projects_v1';  // 月報專案 + 收件狀態
+
+// 填報基底資料(跟 DATA 完全分離),從 3 個 Excel 抽 5 個 sheet 而來
+let DATA_FILLING = null;
+try {
+  const saved = localStorage.getItem(FILLING_BASE_KEY);
+  if (saved) DATA_FILLING = JSON.parse(saved);
+} catch(e) { console.warn('FILLING_BASE 載入失敗', e); }
+
+// 月報專案 + 各管理處收件狀態
+// 結構: { '11506': { period, created_at, submissions: { '桃園': {filler_name, filler_phone, submitted_at, source_file, sheets:{...}}, ... } } }
+let MONTH_PROJECTS = {};
+try {
+  const saved = localStorage.getItem(MONTH_PROJECTS_KEY);
+  if (saved) MONTH_PROJECTS = JSON.parse(saved) || {};
+} catch(e) { console.warn('MONTH_PROJECTS 載入失敗', e); }
 
 // ==================== 輿情監控功能 ====================
 // loadOpinions / saveOpinions 支援 tab 分流 (solar/hydro)
@@ -290,6 +307,1622 @@ function exportDataForDeploy() {
   msg += '3. GitHub Pages 約 1 分鐘後生效\n';
   msg += '4. 其他人重新整理就會看到最新版資料';
   alert(msg);
+}
+
+// =============================================================
+// 填報基底匯入(Stage C 階段 A)— 從 3 個 Excel 抽 5 個 sheet
+// =============================================================
+
+// 安全取字串
+function _str(v) { return v == null ? '' : String(v).replace(/^\s+|\s+$/g, ''); }
+// 安全取數字
+function _num(v) { 
+  if (v == null || v === '') return null; 
+  const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); 
+  return isFinite(n) ? n : null; 
+}
+
+// 5 個 sheet 的解析規則
+const FILLING_SHEET_PARSERS = {
+  // === 太陽光電 附件一(header 在 index 2,資料從 index 3)===
+  solar_addendum: {
+    sheetNames: ['附件一   各管理處推動太陽光電案件辦理情形_篩選版_0529', 
+                 '附件一 各管理處推動太陽光電案件辦理情形_篩選版_0529',
+                 '附件一'],
+    sheetNameContains: ['附件一'],
+    headerRow: 2,
+    dataStartRow: 3,
+    label: '太陽光電(附件一)',
+    // 從每一行抽出物件
+    parseRow: (row, idx) => {
+      const mgmt = _str(row[2]);
+      if (!mgmt) return null;
+      return {
+        _idx: idx, _kind: 'solar_addendum',
+        order: _str(row[0]), no: _str(row[1]),
+        mgmt: mgmt,
+        contract_name: _str(row[3]),
+        site_progress: _str(row[4]),       // 案場進度
+        vendor: _str(row[5]),
+        site_name: _str(row[6]),
+        site_count: _num(row[7]),
+        capacity_mw: _num(row[8]),
+        current_stage: _str(row[9]),       // 目前階段
+        sign_date: _str(row[10]),
+        install_deadline: _str(row[11]),
+        expire_status: _str(row[12]),      // 未到期/已到期(無 header)
+        current_operation: _str(row[13]),  // 目前辦理情況
+        difficulty: _str(row[17]),
+        team_suggestion: _str(row[18]),
+        note: _str(row[19])
+      };
+    }
+  },
+  
+  // === 招標案(header 在 index 1,資料從 index 2)===
+  hydro_tender: {
+    sheetNames: ['招標案'],
+    sheetNameContains: ['招標'],
+    headerRow: 1,
+    dataStartRow: 2,
+    label: '小水力-招標案',
+    parseRow: (row, idx) => {
+      const mgmt = _str(row[1]);
+      if (!mgmt) return null;
+      return {
+        _idx: idx, _kind: 'hydro_tender',
+        serial: _str(row[0]), mgmt: mgmt,
+        county: _str(row[2]), township: _str(row[3]),
+        land_section: _str(row[4]), land_no: _str(row[5]),
+        contract_name: _str(row[6]), case_name: _str(row[7]),
+        capacity_kw: _num(row[8]), unit_count: _num(row[9]),
+        unit_capacity_kw: _num(row[10]),
+        tender_period: _str(row[11]), sign_date: _str(row[12]),
+        // 11 個審查欄位
+        feeder: _str(row[13]),              // 饋線保留
+        internal_review: _str(row[14]),     // 管理處內部審查
+        taipower_review: _str(row[15]),     // 台電併聯審查
+        water_right: _str(row[16]),         // 水權申請
+        water_structure: _str(row[17]),     // 水利建造物
+        soil_conservation: _str(row[18]),   // 水保計畫
+        land_permit: _str(row[19]),         // 土地容許
+        electric_setup: _str(row[20]),      // 電業籌設
+        consent_filed: _str(row[21]),       // 同意備案
+        briefing: _str(row[22]),            // 說明會
+        construction_permit: _str(row[23]), // 施工許可
+        estimated_completion: _str(row[24]),
+        vendor: _str(row[25]),
+        operation: _str(row[26]),           // 辦理情形
+        difficulty: _str(row[27]),          // 遭遇困難事項
+        planned_next: _str(row[28]),        // 近期預計規劃辦理事項
+        note: _str(row[29])
+      };
+    }
+  },
+  
+  // === 測試案(header 在 index 1+2,資料從 index 3)===
+  // 注意:申請測試日期分起(11)/迄(12),簽約日期在 13
+  hydro_test: {
+    sheetNames: ['測試案'],
+    sheetNameContains: ['測試案'],
+    headerRow: 1,
+    dataStartRow: 3,
+    label: '小水力-測試案',
+    parseRow: (row, idx) => {
+      const mgmt = _str(row[1]);
+      if (!mgmt) return null;
+      return {
+        _idx: idx, _kind: 'hydro_test',
+        serial: _str(row[0]), mgmt: mgmt,
+        county: _str(row[2]), township: _str(row[3]),
+        land_section: _str(row[4]), land_no: _str(row[5]),
+        channel_name: _str(row[6]),
+        capacity_kw: _num(row[7]),
+        pile_no: _str(row[8]),
+        unit_count: _num(row[9]),
+        unit_capacity_kw: _num(row[10]),
+        test_apply_from: _str(row[11]),
+        test_apply_to: _str(row[12]),
+        sign_date: _str(row[13]),
+        internal_review: _str(row[14]),    // 管理處內部審查(測試計畫)
+        actual_test_date: _str(row[15]),   // 實際完成測試日期
+        vendor: _str(row[16]),
+        operation: _str(row[17]),
+        planned_next: _str(row[18]),
+        note: _str(row[19])
+      };
+    }
+  },
+  
+  // === 潛力案場(header 在 index 1+2,資料從 index 3)===
+  // 欄 9 備註、欄 10 進度、欄 11 版本類型(對內,尚需評估 / 對外)
+  hydro_potential: {
+    sheetNames: ['潛力案場'],
+    sheetNameContains: ['潛力'],
+    headerRow: 1,
+    dataStartRow: 3,
+    label: '小水力-潛力案場',
+    parseRow: (row, idx) => {
+      const mgmt = _str(row[1]);
+      if (!mgmt) return null;
+      return {
+        _idx: idx, _kind: 'hydro_potential',
+        serial: _str(row[0]), mgmt: mgmt,
+        county: _str(row[2]), township: _str(row[3]),
+        land_section: _str(row[4]), land_no: _str(row[5]),
+        channel_name: _str(row[6]), pile_no: _str(row[7]),
+        estimated_capacity_kw: _num(row[8]),
+        note: _str(row[9]),
+        progress: _str(row[10]),
+        version_type: _str(row[11])
+      };
+    }
+  },
+  
+  // === 洽詢紀錄表(header 在 index 1,資料從 index 2)===
+  hydro_inquiry: {
+    sheetNames: ['洽詢紀錄表'],
+    sheetNameContains: ['洽詢'],
+    headerRow: 1,
+    dataStartRow: 2,
+    label: '小水力-洽詢紀錄',
+    parseRow: (row, idx) => {
+      const mgmt = _str(row[1]);
+      if (!mgmt) return null;
+      return {
+        _idx: idx, _kind: 'hydro_inquiry',
+        serial: _str(row[0]), mgmt: mgmt,
+        inquiry_date: _str(row[2]),
+        inquiry_unit: _str(row[3]),
+        name: _str(row[4]),
+        inquiry_method: _str(row[5]),
+        inquiry_type: _str(row[6]),
+        inquiry_content: _str(row[7]),
+        handling_status: _str(row[8]),
+        closure_date: _str(row[9])
+      };
+    }
+  }
+};
+
+// 從一個 workbook 找出符合的 sheet
+function _findSheet(wb, parser) {
+  // 先試精準名
+  for (const exact of parser.sheetNames) {
+    if (wb.SheetNames.includes(exact)) return exact;
+  }
+  // 再試模糊比對
+  for (const sn of wb.SheetNames) {
+    for (const contains of parser.sheetNameContains) {
+      if (sn.includes(contains)) return sn;
+    }
+  }
+  return null;
+}
+
+// 從一份 workbook 抽出所有可解析的 sheet 資料
+function _parseFillingWorkbook(wb, sourceFileName) {
+  const result = {};
+  for (const [key, parser] of Object.entries(FILLING_SHEET_PARSERS)) {
+    const sheetName = _findSheet(wb, parser);
+    if (!sheetName) continue;
+    
+    const ws = wb.Sheets[sheetName];
+    const arr = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+    if (arr.length <= parser.dataStartRow) continue;
+    
+    const records = [];
+    for (let i = parser.dataStartRow; i < arr.length; i++) {
+      const row = arr[i];
+      if (!row || row.length === 0) continue;
+      const obj = parser.parseRow(row, i);
+      if (obj) records.push(obj);
+    }
+    
+    if (records.length > 0) {
+      result[key] = { 
+        records, 
+        sourceFile: sourceFileName, 
+        sheetName,
+        label: parser.label
+      };
+    }
+  }
+  return result;
+}
+
+// 主入口:接收多個 Excel 檔
+async function importFillingBase(event) {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+  event.target.value = '';  // 清掉,讓同檔可以重選
+  
+  const merged = {
+    imported_at: new Date().toISOString(),
+    source_files: [],
+    solar_addendum: [],
+    hydro_tender: [],
+    hydro_test: [],
+    hydro_potential: [],
+    hydro_inquiry: []
+  };
+  
+  const summaries = [];
+  
+  for (const file of files) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+      const parsed = _parseFillingWorkbook(wb, file.name);
+      
+      merged.source_files.push({ name: file.name, sheets_found: Object.keys(parsed) });
+      
+      // 把每個 key 的 records 合併進 merged
+      // 規則:同類 sheet 在多個檔出現時,後匯入取代前面(因為通常最新檔放後面)
+      for (const [key, info] of Object.entries(parsed)) {
+        if (merged[key].length > 0) {
+          summaries.push(`✓ ${file.name} → ${info.label}: ${info.records.length} 筆(取代了前面匯入的 ${merged[key].length} 筆)`);
+        } else {
+          summaries.push(`✓ ${file.name} → ${info.label}: ${info.records.length} 筆`);
+        }
+        merged[key] = info.records;
+      }
+    } catch(err) {
+      console.error('讀檔失敗:', file.name, err);
+      summaries.push(`✗ ${file.name} 讀取失敗:${err.message}`);
+    }
+  }
+  
+  const totalCount = merged.solar_addendum.length + merged.hydro_tender.length + 
+    merged.hydro_test.length + merged.hydro_potential.length + merged.hydro_inquiry.length;
+  
+  if (totalCount === 0) {
+    alert('⚠️ 未抽出任何資料\n\n' + summaries.join('\n') + 
+      '\n\n請確認 Excel 內含下列任一 sheet:\n' +
+      '· 附件一(太陽光電)\n· 招標案\n· 測試案\n· 潛力案場\n· 洽詢紀錄表');
+    return;
+  }
+  
+  // 確認是否要覆蓋
+  if (DATA_FILLING && (DATA_FILLING.solar_addendum.length + DATA_FILLING.hydro_tender.length > 0)) {
+    if (!confirm('已有舊的填報基底資料,確定要覆蓋?\n\n新匯入:\n' + 
+      '· 太陽光電(附件一):' + merged.solar_addendum.length + ' 筆\n' +
+      '· 小水力-招標案:' + merged.hydro_tender.length + ' 筆\n' +
+      '· 小水力-測試案:' + merged.hydro_test.length + ' 筆\n' +
+      '· 小水力-潛力案場:' + merged.hydro_potential.length + ' 筆\n' +
+      '· 小水力-洽詢紀錄:' + merged.hydro_inquiry.length + ' 筆')) {
+      return;
+    }
+  }
+  
+  // 寫入 localStorage + 全域變數
+  DATA_FILLING = merged;
+  try {
+    localStorage.setItem(FILLING_BASE_KEY, JSON.stringify(merged));
+  } catch(err) {
+    alert('寫入 localStorage 失敗(可能容量超出):' + err.message);
+    return;
+  }
+  
+  // 統計各管理處分布
+  const mgmtStats = {};
+  ['solar_addendum', 'hydro_tender', 'hydro_test', 'hydro_potential', 'hydro_inquiry'].forEach(key => {
+    merged[key].forEach(r => {
+      const m = r.mgmt || '(未填)';
+      if (!mgmtStats[m]) mgmtStats[m] = { solar: 0, tender: 0, test: 0, potential: 0, inquiry: 0 };
+      const shortKey = { solar_addendum:'solar', hydro_tender:'tender', hydro_test:'test', 
+                         hydro_potential:'potential', hydro_inquiry:'inquiry' }[key];
+      mgmtStats[m][shortKey]++;
+    });
+  });
+  
+  let mgmtBreakdown = '\n各管理處分布(光電/招標/測試/潛力/洽詢):\n';
+  Object.entries(mgmtStats).sort().forEach(([m, s]) => {
+    const total = s.solar + s.tender + s.test + s.potential + s.inquiry;
+    mgmtBreakdown += `  ${m}: ${s.solar}/${s.tender}/${s.test}/${s.potential}/${s.inquiry} (共 ${total})\n`;
+  });
+  
+  render();
+  
+  alert('✅ 填報基底匯入成功!\n\n' +
+    summaries.join('\n') + '\n\n' +
+    '─────────────────\n總計:\n' +
+    '· 太陽光電(附件一):' + merged.solar_addendum.length + ' 案\n' +
+    '· 小水力-招標案:' + merged.hydro_tender.length + ' 案\n' +
+    '· 小水力-測試案:' + merged.hydro_test.length + ' 案\n' +
+    '· 小水力-潛力案場:' + merged.hydro_potential.length + ' 案\n' +
+    '· 小水力-洽詢紀錄:' + merged.hydro_inquiry.length + ' 案\n' +
+    mgmtBreakdown);
+}
+
+// =============================================================
+// 月報填報匯入(Stage C 階段 D)— 一次匯入多個窗口的填報 Excel
+// =============================================================
+
+// 5 個資料 sheet 對應到 MONTH_PROJECTS 的 5 個 key
+const SUBMISSION_SHEET_MAP = {
+  '太陽光電': { key: 'solar_addendum', label: '太陽光電(附件一)' },
+  '招標案': { key: 'hydro_tender', label: '小水力-招標案' },
+  '測試案': { key: 'hydro_test', label: '小水力-測試案' },
+  '潛力案場': { key: 'hydro_potential', label: '小水力-潛力案場' },
+  '洽詢紀錄': { key: 'hydro_inquiry', label: '小水力-洽詢紀錄' }
+};
+
+// 從填報 Excel 的 Metadata sheet 抽 metadata
+function _parseSubmissionMetadata(wb) {
+  const ws = wb.Sheets['Metadata'];
+  if (!ws) return null;
+  const arr = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+  const meta = {};
+  arr.forEach(row => {
+    const k = _str(row[0]); const v = _str(row[1]);
+    if (k === '期別') meta.period = v;
+    else if (k === '管理處') meta.mgmt = v;
+    else if (k === '填報人姓名') meta.filler_name = v;
+    else if (k === '聯絡電話') meta.filler_phone = v;
+    else if (k === '填報時間') meta.submitted_at = v;
+    else if (k === '快照日期') meta.snapshot_date = v;
+    else if (k === '快照來源') meta.snapshot_source = v;
+  });
+  return meta;
+}
+
+// 從某個 sheet 抽資料(用標題列當欄位 mapper)
+function _parseSubmissionSheet(ws) {
+  const arr = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+  if (arr.length < 2) return [];
+  const headers = arr[0].map(h => _str(h));
+  const records = [];
+  for (let i = 1; i < arr.length; i++) {
+    const row = arr[i];
+    if (!row || row.length === 0) continue;
+    const obj = {};
+    headers.forEach((h, j) => { if (h) obj[h] = row[j] != null ? row[j] : ''; });
+    // 至少要有「狀態」或「管理處」其中之一非空才當有效資料
+    if (_str(obj['狀態']) || _str(obj['管理處']) || _str(obj['案場名稱']) || _str(obj['案名']) || _str(obj['圳路名稱']) || _str(obj['洽詢單位'])) {
+      records.push(obj);
+    }
+  }
+  return records;
+}
+
+// 主入口:接收多個填報 Excel
+async function importMonthlySubmissions(event) {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+  event.target.value = '';
+  
+  const results = [];   // { file, status, msg, period, mgmt }
+  const periodSet = new Set();
+  
+  for (const file of files) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+      
+      // 抽 Metadata
+      const meta = _parseSubmissionMetadata(wb);
+      if (!meta || !meta.period || !meta.mgmt) {
+        results.push({ file: file.name, status: 'error', msg: '無法解析 Metadata(請確認 Excel 是用 filling.html 產出的)' });
+        continue;
+      }
+      
+      periodSet.add(meta.period);
+      
+      // 抽 5 個資料 sheet
+      const sheets = {};
+      for (const [sheetName, conf] of Object.entries(SUBMISSION_SHEET_MAP)) {
+        if (wb.Sheets[sheetName]) {
+          sheets[conf.key] = _parseSubmissionSheet(wb.Sheets[sheetName]);
+        } else {
+          sheets[conf.key] = [];
+        }
+      }
+      
+      const totalRecords = Object.values(sheets).reduce((a, arr) => a + arr.length, 0);
+      
+      // 確保 MONTH_PROJECTS[period] 存在
+      if (!MONTH_PROJECTS[meta.period]) {
+        MONTH_PROJECTS[meta.period] = {
+          period: meta.period,
+          created_at: new Date().toISOString(),
+          submissions: {}
+        };
+      }
+      
+      // 寫入 submission
+      MONTH_PROJECTS[meta.period].submissions[meta.mgmt] = {
+        filler_name: meta.filler_name || '',
+        filler_phone: meta.filler_phone || '',
+        submitted_at: meta.submitted_at || '',
+        source_file: file.name,
+        imported_at: new Date().toISOString(),
+        snapshot_date: meta.snapshot_date || '',
+        snapshot_source: meta.snapshot_source || '',
+        sheets: sheets,
+        total_records: totalRecords
+      };
+      
+      results.push({ 
+        file: file.name, status: 'ok', period: meta.period, mgmt: meta.mgmt,
+        msg: meta.mgmt + ' (' + meta.filler_name + ') · 共 ' + totalRecords + ' 筆'
+      });
+    } catch(err) {
+      console.error('讀檔失敗:', file.name, err);
+      results.push({ file: file.name, status: 'error', msg: '讀取失敗:' + err.message });
+    }
+  }
+  
+  // 寫回 localStorage
+  try {
+    localStorage.setItem(MONTH_PROJECTS_KEY, JSON.stringify(MONTH_PROJECTS));
+  } catch(err) {
+    alert('⚠️ localStorage 寫入失敗(容量超出):' + err.message + '\n\n請先清除舊期報資料。');
+    return;
+  }
+  
+  render();
+  
+  // 顯示結果摘要
+  const okCount = results.filter(r => r.status === 'ok').length;
+  const errCount = results.filter(r => r.status === 'error').length;
+  let msg = '✅ 月報填報匯入完成\n\n';
+  msg += '成功:' + okCount + ' 處\n';
+  if (errCount > 0) msg += '失敗:' + errCount + ' 處\n';
+  msg += '\n──────────────\n';
+  results.forEach(r => {
+    msg += (r.status === 'ok' ? '✓ ' : '✗ ') + r.file + '\n   ' + r.msg + '\n';
+  });
+  
+  if (periodSet.size > 0) {
+    msg += '\n📋 涉及期別:' + Array.from(periodSet).join('、');
+    msg += '\n\n捲動到頁面下方「月報收件狀態」可看完整收件清單';
+  }
+  
+  alert(msg);
+}
+
+// 移除某管理處的填報(誤匯入或要重收時用)
+function removeSubmission(period, mgmt) {
+  if (!confirm('確定要移除「' + period + ' · ' + mgmt + '」的填報資料嗎?\n\n移除後,該管理處狀態會變回「未收到」,需要重新匯入。')) return;
+  if (MONTH_PROJECTS[period] && MONTH_PROJECTS[period].submissions[mgmt]) {
+    delete MONTH_PROJECTS[period].submissions[mgmt];
+    // 若該期沒有任何 submission,整個移除
+    if (Object.keys(MONTH_PROJECTS[period].submissions).length === 0) {
+      delete MONTH_PROJECTS[period];
+    }
+    localStorage.setItem(MONTH_PROJECTS_KEY, JSON.stringify(MONTH_PROJECTS));
+    render();
+  }
+}
+
+// 移除整期月報(全部清掉)
+function removeMonthProject(period) {
+  if (!confirm('確定要刪除整期 ' + period + ' 月報專案嗎?\n\n所有管理處的填報資料都會被清掉,無法復原。')) return;
+  delete MONTH_PROJECTS[period];
+  localStorage.setItem(MONTH_PROJECTS_KEY, JSON.stringify(MONTH_PROJECTS));
+  render();
+}
+
+// 月報收件狀態看板(渲染區塊)
+function tplMonthProjectStatus() {
+  const periods = Object.keys(MONTH_PROJECTS).sort().reverse();  // 最新期在前
+  
+  if (periods.length === 0) {
+    return `
+      <section class="section-card mt-8">
+        <div class="px-6 py-6">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-lg font-bold">📊 月報收件狀態</h3>
+              <p class="text-xs mt-1" style="color:var(--ink-soft)">匯入各管理處填報的 Excel 後,這裡會顯示收件進度</p>
+            </div>
+          </div>
+          <div class="rounded-lg p-4 text-center" style="background:#f8fafc;color:var(--ink-muted)">
+            尚無月報專案。點上方工具列「📤 匯入月報填報」按鈕,選擇從 filling.html 下載的 Excel 開始。
+          </div>
+        </div>
+      </section>
+    `;
+  }
+  
+  // 用 state.activeMonthPeriod 切換期別,預設最新期
+  if (!state.activeMonthPeriod || !MONTH_PROJECTS[state.activeMonthPeriod]) {
+    state.activeMonthPeriod = periods[0];
+  }
+  const activePeriod = state.activeMonthPeriod;
+  const project = MONTH_PROJECTS[activePeriod];
+  const subs = project.submissions || {};
+  
+  // 14 個管理處清單
+  const allMgmts = ['桃園','石門','新竹','苗栗','臺中','南投','彰化','雲林','嘉南','高雄','屏東','宜蘭','花蓮','臺東'];
+  const collected = allMgmts.filter(m => subs[m]).length;
+  const totalMgmts = allMgmts.length;
+  
+  // 期別下拉
+  const periodOptions = periods.map(p => {
+    const subCount = Object.keys(MONTH_PROJECTS[p].submissions || {}).length;
+    return `<option value="${p}"${p === activePeriod ? ' selected' : ''}>${p} (${subCount}/14 已收)</option>`;
+  }).join('');
+  
+  // 14 處狀態列表
+  const rows = allMgmts.map(m => {
+    const sub = subs[m];
+    if (sub) {
+      const dateStr = sub.submitted_at || sub.imported_at?.substring(0, 16).replace('T', ' ') || '';
+      return `
+        <div class="flex items-center justify-between rounded-lg border p-3" style="border-color:#86efac;background:#f0fdf4">
+          <div class="flex items-center gap-3 flex-1">
+            <span style="color:#059669;font-size:16px">✅</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">${m}管理處</div>
+              <div class="text-xs" style="color:#15803d">${sub.filler_name || '(未填姓名)'}${sub.filler_phone ? ' · ' + sub.filler_phone : ''}</div>
+              <div class="text-xs" style="color:var(--ink-soft)">填報:${dateStr} · ${sub.total_records || 0} 筆 · 檔名:${sub.source_file}</div>
+            </div>
+          </div>
+          <button class="icon-btn" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:11px;padding:4px 8px"
+                  onclick="removeSubmission('${activePeriod}','${m}')">✕ 移除</button>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="flex items-center justify-between rounded-lg border p-3" style="border-color:#e2e8f0;background:#fafbfc">
+          <div class="flex items-center gap-3 flex-1">
+            <span style="color:#94a3b8;font-size:16px">⏳</span>
+            <div class="flex-1">
+              <div class="font-semibold text-sm" style="color:#64748b">${m}管理處</div>
+              <div class="text-xs" style="color:#94a3b8">尚未收到填報</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }).join('');
+  
+  return `
+    <section class="section-card mt-8">
+      <div class="px-6 py-6">
+        <div class="flex items-start justify-between gap-3 mb-4 flex-wrap">
+          <div>
+            <h3 class="text-lg font-bold">📊 月報收件狀態</h3>
+            <p class="text-xs mt-1" style="color:var(--ink-soft)">建立時間:${project.created_at ? new Date(project.created_at).toLocaleString('zh-TW') : '(未知)'}</p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <label class="text-xs font-medium" style="color:var(--ink-soft)">期別</label>
+            <select onchange="state.activeMonthPeriod=this.value;render()" 
+                    style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:white">
+              ${periodOptions}
+            </select>
+            <button class="icon-btn" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;font-size:12px"
+                    onclick="removeMonthProject('${activePeriod}')">🗑 刪除整期</button>
+          </div>
+        </div>
+        
+        <!-- 進度條 -->
+        <div class="rounded-lg p-3 mb-4" style="background:#f5f3ff;border:1px solid #ddd6fe">
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-sm font-semibold" style="color:#6d28d9">收件進度</span>
+            <span class="text-xl font-bold tabular-nums" style="color:#6d28d9">${collected} / ${totalMgmts}</span>
+          </div>
+          <div style="height:8px;background:white;border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${(collected/totalMgmts*100).toFixed(1)}%;background:linear-gradient(to right,#7c3aed,#a78bfa);transition:width 0.3s"></div>
+          </div>
+          <p class="text-xs mt-2" style="color:#6d28d9">${(collected/totalMgmts*100).toFixed(0)}% 完成 · 尚缺 ${totalMgmts - collected} 處</p>
+        </div>
+        
+        <!-- 14 處清單 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          ${rows}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+// =============================================================
+// 月報填報專案(階段 A)
+// =============================================================
+
+// 取得預設期別:用今天的民國年月,例如 2026/06 → 11506
+function defaultPeriodCode() {
+  const now = new Date();
+  const yyyMm = (now.getFullYear() - 1911) * 100 + (now.getMonth() + 1);
+  return String(yyyMm);
+}
+
+// 主要工作:產生 filling_XXXXX.html 並下載
+function generateFillingHtml() {
+  const periodInput = document.getElementById('np-period');
+  if (!periodInput) { alert('找不到期別欄位'); return; }
+  const period = periodInput.value.trim();
+  
+  // 驗證:期別應為 5 碼民國年月,例如 11506
+  if (!/^\d{5}$/.test(period)) {
+    alert('期別格式錯誤,請輸入 5 碼民國年月(例:11506 表示民國 115 年 6 月)');
+    return;
+  }
+  
+  // 用 DATA_FILLING(填報基底資料)當快照
+  if (!DATA_FILLING) {
+    alert('⚠️ 尚未匯入填報基底資料\n\n請先點工具列「📥 匯入填報基底」按鈕,選擇 3 個基底 Excel(小水力盤點 + 太陽光電進度 + 太陽光電盤點)。');
+    return;
+  }
+  const snapshot = JSON.parse(JSON.stringify(DATA_FILLING));
+  const metadata = {
+    period: period,
+    created_at: new Date().toISOString(),
+    snapshot_date: DATA_FILLING.imported_at ? DATA_FILLING.imported_at.split('T')[0] : (new Date().toISOString().split('T')[0]),
+    snapshot_source: (DATA_FILLING.source_files || []).map(f => f.name).join(' + ') || '(未填)'
+  };
+  
+  // 生出 filling HTML 內容(階段 A:placeholder,階段 B 會放真實填報表單)
+  const html = buildFillingHtml(period, snapshot, metadata);
+  
+  // 觸發下載
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'filling_' + period + '.html';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  
+  // 顯示後續步驟提示
+  const totalSolar = (snapshot.solar_addendum||[]).length;
+  const totalTender = (snapshot.hydro_tender||[]).length;
+  const totalTest = (snapshot.hydro_test||[]).length;
+  const totalPot = (snapshot.hydro_potential||[]).length;
+  const totalInq = (snapshot.hydro_inquiry||[]).length;
+  const totalHydro = totalTender + totalTest + totalPot + totalInq;
+  
+  alert('✅ 已下載 filling_' + period + '.html\n\n' +
+    '📊 內含資料快照:\n' +
+    '  · 太陽光電(附件一):' + totalSolar + ' 案\n' +
+    '  · 小水力-招標案:' + totalTender + ' 案\n' +
+    '  · 小水力-測試案:' + totalTest + ' 案\n' +
+    '  · 小水力-潛力案場:' + totalPot + ' 案\n' +
+    '  · 小水力-洽詢紀錄:' + totalInq + ' 案\n' +
+    '  · 資料日期:' + metadata.snapshot_date + '\n\n' +
+    '📋 後續步驟:\n' +
+    '1. 把 filling_' + period + '.html 上傳到 GitHub repo(跟 index.html 同目錄)\n' +
+    '2. 等 GitHub Pages 部署完成(約 1 分鐘)\n' +
+    '3. 把以下連結 mail 給 14 個管理處窗口:\n' +
+    '   https://william-858.github.io/green-energy-dashboard_histroy_PCM/filling_' + period + '.html\n\n' +
+    '⚠️ 目前是階段 A,filling 頁面是 placeholder。\n' +
+    '   完整填報功能將在階段 B 完成。');
+  
+  // 關閉 modal
+  setState({ newProjectModal: false });
+}
+
+// Filling.html template(階段 B:完整填報頁面)以 base64 編碼內嵌
+const FILLING_TEMPLATE_B64 = 
+  'PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9InpoLUhhbnQiPgo8aGVhZD4KPG1ldGEgY2hhcnNldD0i' +
+  'VVRGLTgiPgo8bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoLCBp' +
+  'bml0aWFsLXNjYWxlPTEuMCI+Cjx0aXRsZT5fX1BFUklPRF9fIOaciOWgseWhq+WgsSDCtyDovrLnlLDm' +
+  'sLTliKnnvbLntqDog73nrqHogIM8L3RpdGxlPgo8c2NyaXB0IHNyYz0iaHR0cHM6Ly9jZG4uanNkZWxp' +
+  'dnIubmV0L25wbS94bHN4QDAuMTguNS9kaXN0L3hsc3guZnVsbC5taW4uanMiPjwvc2NyaXB0Pgo8c3R5' +
+  'bGU+CiAgKiwgKjo6YmVmb3JlLCAqOjphZnRlciB7IGJveC1zaXppbmc6IGJvcmRlci1ib3g7IH0KICBi' +
+  'b2R5IHsgZm9udC1mYW1pbHk6IC1hcHBsZS1zeXN0ZW0sICJQaW5nRmFuZyBUQyIsICJNaWNyb3NvZnQg' +
+  'SmhlbmdIZWkiLCBzYW5zLXNlcmlmOwogICAgICAgICBtYXJnaW46IDA7IHBhZGRpbmc6IDA7IGJhY2tn' +
+  'cm91bmQ6ICNmOGZhZmM7IGNvbG9yOiAjMGYxNzJhOyBsaW5lLWhlaWdodDogMS41OyB9CiAgLmNvbnRh' +
+  'aW5lciB7IG1heC13aWR0aDogMTIwMHB4OyBtYXJnaW46IDAgYXV0bzsgcGFkZGluZzogMTZweDsgfQog' +
+  'IAogIC8qIEhlYWRlciAqLwogIC5oZWFkZXIgeyBiYWNrZ3JvdW5kOiB3aGl0ZTsgYm9yZGVyLXJhZGl1' +
+  'czogMTJweDsgcGFkZGluZzogMjBweDsgbWFyZ2luLWJvdHRvbTogMTZweDsKICAgICAgICAgICAgYm94' +
+  'LXNoYWRvdzogMCAxcHggM3B4IHJnYmEoMCwwLDAsMC4wNik7IH0KICAuaGVhZGVyIGgxIHsgbWFyZ2lu' +
+  'OiAwIDAgNnB4OyBmb250LXNpemU6IDIycHg7IH0KICAuaGVhZGVyIC5tZXRhIHsgY29sb3I6ICM2NDc0' +
+  'OGI7IGZvbnQtc2l6ZTogMTNweDsgfQogIC5iYWRnZSB7IGRpc3BsYXk6IGlubGluZS1ibG9jazsgYmFj' +
+  'a2dyb3VuZDogI2RkZDZmZTsgY29sb3I6ICM2ZDI4ZDk7CiAgICAgICAgICAgcGFkZGluZzogMnB4IDhw' +
+  'eDsgYm9yZGVyLXJhZGl1czogNHB4OyBmb250LXNpemU6IDEycHg7IGZvbnQtd2VpZ2h0OiA2MDA7IG1h' +
+  'cmdpbi1yaWdodDogOHB4OyB9CiAgCiAgLyogQ2FyZCAqLwogIC5jYXJkIHsgYmFja2dyb3VuZDogd2hp' +
+  'dGU7IGJvcmRlci1yYWRpdXM6IDEycHg7IHBhZGRpbmc6IDIwcHg7IG1hcmdpbi1ib3R0b206IDE2cHg7' +
+  'CiAgICAgICAgICBib3gtc2hhZG93OiAwIDFweCAzcHggcmdiYSgwLDAsMCwwLjA2KTsgfQogIC5jYXJk' +
+  'IGgyIHsgbWFyZ2luOiAwIDAgMTJweDsgZm9udC1zaXplOiAxOHB4OyBkaXNwbGF5OiBmbGV4OyBhbGln' +
+  'bi1pdGVtczogY2VudGVyOyBnYXA6IDhweDsgfQogIC5jYXJkIC5zdWJ0aXRsZSB7IGNvbG9yOiAjNjQ3' +
+  'NDhiOyBmb250LXNpemU6IDEzcHg7IG1hcmdpbi1ib3R0b206IDE2cHg7IH0KICAKICAvKiBGb3JtICov' +
+  'CiAgLmZvcm0tcm93IHsgZGlzcGxheTogZ3JpZDsgZ2FwOiAxMnB4OyBtYXJnaW4tYm90dG9tOiAxMnB4' +
+  'OyB9CiAgLmZvcm0tcm93LmNvbHMtMiB7IGdyaWQtdGVtcGxhdGUtY29sdW1uczogMWZyIDFmcjsgfQog' +
+  'IC5mb3JtLXJvdy5jb2xzLTMgeyBncmlkLXRlbXBsYXRlLWNvbHVtbnM6IDFmciAxZnIgMWZyOyB9CiAg' +
+  'QG1lZGlhIChtYXgtd2lkdGg6IDcwMHB4KSB7IC5mb3JtLXJvdy5jb2xzLTIsIC5mb3JtLXJvdy5jb2xz' +
+  'LTMgeyBncmlkLXRlbXBsYXRlLWNvbHVtbnM6IDFmcjsgfSB9CiAgbGFiZWwgeyBkaXNwbGF5OiBibG9j' +
+  'azsgZm9udC1zaXplOiAxMnB4OyBmb250LXdlaWdodDogNjAwOyBjb2xvcjogIzQ3NTU2OTsgbWFyZ2lu' +
+  'LWJvdHRvbTogNHB4OyB9CiAgbGFiZWwgLnJlcSB7IGNvbG9yOiAjZGMyNjI2OyBtYXJnaW4tbGVmdDog' +
+  'MnB4OyB9CiAgaW5wdXRbdHlwZT0idGV4dCJdLCBpbnB1dFt0eXBlPSJ0ZWwiXSwgaW5wdXRbdHlwZT0i' +
+  'bnVtYmVyIl0sIGlucHV0W3R5cGU9ImRhdGUiXSwgc2VsZWN0LCB0ZXh0YXJlYSB7CiAgICB3aWR0aDog' +
+  'MTAwJTsgcGFkZGluZzogN3B4IDEwcHg7IGJvcmRlcjogMXB4IHNvbGlkICNjYmQ1ZTE7IGJvcmRlci1y' +
+  'YWRpdXM6IDZweDsKICAgIGZvbnQtc2l6ZTogMTNweDsgZm9udC1mYW1pbHk6IGluaGVyaXQ7IGJhY2tn' +
+  'cm91bmQ6IHdoaXRlOwogIH0KICBpbnB1dDpmb2N1cywgc2VsZWN0OmZvY3VzLCB0ZXh0YXJlYTpmb2N1' +
+  'cyB7IG91dGxpbmU6IDJweCBzb2xpZCAjN2MzYWVkOyBvdXRsaW5lLW9mZnNldDogLTFweDsgYm9yZGVy' +
+  'LWNvbG9yOiAjN2MzYWVkOyB9CiAgdGV4dGFyZWEgeyBtaW4taGVpZ2h0OiA1MHB4OyByZXNpemU6IHZl' +
+  'cnRpY2FsOyBsaW5lLWhlaWdodDogMS40OyB9CiAgc2VsZWN0IHsgY3Vyc29yOiBwb2ludGVyOyB9CiAg' +
+  'CiAgLyogQnV0dG9ucyAqLwogIGJ1dHRvbiB7IGN1cnNvcjogcG9pbnRlcjsgcGFkZGluZzogN3B4IDEz' +
+  'cHg7IGJvcmRlcjogMXB4IHNvbGlkICNjYmQ1ZTE7IGJvcmRlci1yYWRpdXM6IDZweDsKICAgICAgICAg' +
+  'ICBiYWNrZ3JvdW5kOiB3aGl0ZTsgZm9udC1zaXplOiAxM3B4OyBmb250LXdlaWdodDogNTAwOyBmb250' +
+  'LWZhbWlseTogaW5oZXJpdDsKICAgICAgICAgICB0cmFuc2l0aW9uOiBhbGwgMC4xNXM7IH0KICBidXR0' +
+  'b246aG92ZXI6bm90KDpkaXNhYmxlZCkgeyBiYWNrZ3JvdW5kOiAjZjFmNWY5OyB9CiAgYnV0dG9uOmRp' +
+  'c2FibGVkIHsgb3BhY2l0eTogMC41OyBjdXJzb3I6IG5vdC1hbGxvd2VkOyB9CiAgLmJ0bi1wcmltYXJ5' +
+  'IHsgYmFja2dyb3VuZDogIzdjM2FlZDsgY29sb3I6IHdoaXRlOyBib3JkZXItY29sb3I6ICM2ZDI4ZDk7' +
+  'IGZvbnQtd2VpZ2h0OiA2MDA7IH0KICAuYnRuLXByaW1hcnk6aG92ZXI6bm90KDpkaXNhYmxlZCkgeyBi' +
+  'YWNrZ3JvdW5kOiAjNmQyOGQ5ICFpbXBvcnRhbnQ7IH0KICAuYnRuLXN1Y2Nlc3MgeyBiYWNrZ3JvdW5k' +
+  'OiAjMTBiOTgxOyBjb2xvcjogd2hpdGU7IGJvcmRlci1jb2xvcjogIzA1OTY2OTsgZm9udC13ZWlnaHQ6' +
+  'IDYwMDsgfQogIC5idG4tc3VjY2Vzczpob3Zlcjpub3QoOmRpc2FibGVkKSB7IGJhY2tncm91bmQ6ICMw' +
+  'NTk2NjkgIWltcG9ydGFudDsgfQogIC5idG4tZGFuZ2VyIHsgYmFja2dyb3VuZDogI2ZlZTJlMjsgY29s' +
+  'b3I6ICM5OTFiMWI7IGJvcmRlci1jb2xvcjogI2ZjYTVhNTsgfQogIC5idG4tZGFuZ2VyOmhvdmVyOm5v' +
+  'dCg6ZGlzYWJsZWQpIHsgYmFja2dyb3VuZDogI2ZlY2FjYSAhaW1wb3J0YW50OyB9CiAgLmJ0bi1sYXJn' +
+  'ZSB7IHBhZGRpbmc6IDExcHggMjJweDsgZm9udC1zaXplOiAxNXB4OyB9CiAgCiAgLyogVGFicyAtIOWF' +
+  'qeWxpCAqLwogIC50YWJzLWwxIHsgZGlzcGxheTogZmxleDsgZ2FwOiA0cHg7IGJvcmRlci1ib3R0b206' +
+  'IDJweCBzb2xpZCAjZTJlOGYwOyBtYXJnaW4tYm90dG9tOiAxMnB4OyB9CiAgLnRhYnMtbDEgYnV0dG9u' +
+  'IHsgYmFja2dyb3VuZDogdHJhbnNwYXJlbnQ7IGJvcmRlcjogbm9uZTsgcGFkZGluZzogMTBweCAyMHB4' +
+  'OyBmb250LXNpemU6IDE1cHg7CiAgICAgICAgICAgICAgICAgICAgZm9udC13ZWlnaHQ6IDYwMDsgY29s' +
+  'b3I6ICM2NDc0OGI7IGJvcmRlci1yYWRpdXM6IDA7IGJvcmRlci1ib3R0b206IDNweCBzb2xpZCB0cmFu' +
+  'c3BhcmVudDsKICAgICAgICAgICAgICAgICAgICBtYXJnaW4tYm90dG9tOiAtMnB4OyB9CiAgLnRhYnMt' +
+  'bDEgYnV0dG9uLmFjdGl2ZSB7IGNvbG9yOiAjN2MzYWVkOyBib3JkZXItYm90dG9tLWNvbG9yOiAjN2Mz' +
+  'YWVkOyB9CiAgLnRhYnMtbDEgYnV0dG9uOmhvdmVyOm5vdCguYWN0aXZlKSB7IGNvbG9yOiAjMGYxNzJh' +
+  'OyB9CiAgCiAgLnRhYnMtbDIgeyBkaXNwbGF5OiBmbGV4OyBmbGV4LXdyYXA6IHdyYXA7IGdhcDogNnB4' +
+  'OyBtYXJnaW4tYm90dG9tOiAxNnB4OyBwYWRkaW5nOiA0cHg7IAogICAgICAgICAgICAgYmFja2dyb3Vu' +
+  'ZDogI2YxZjVmOTsgYm9yZGVyLXJhZGl1czogOHB4OyB9CiAgLnRhYnMtbDIgYnV0dG9uIHsgYmFja2dy' +
+  'b3VuZDogdHJhbnNwYXJlbnQ7IGJvcmRlcjogMXB4IHNvbGlkIHRyYW5zcGFyZW50OyBwYWRkaW5nOiA2' +
+  'cHggMTRweDsKICAgICAgICAgICAgICAgICAgICBmb250LXNpemU6IDEzcHg7IGZvbnQtd2VpZ2h0OiA1' +
+  'MDA7IGNvbG9yOiAjNDc1NTY5OyBib3JkZXItcmFkaXVzOiA2cHg7IH0KICAudGFicy1sMiBidXR0b24u' +
+  'YWN0aXZlIHsgYmFja2dyb3VuZDogd2hpdGU7IGNvbG9yOiAjMGQ5NDg4OyBib3JkZXItY29sb3I6ICNj' +
+  'Y2ZiZjE7IGZvbnQtd2VpZ2h0OiA2MDA7CiAgICAgICAgICAgICAgICAgICAgICAgICAgIGJveC1zaGFk' +
+  'b3c6IDAgMXB4IDJweCByZ2JhKDAsMCwwLDAuMDUpOyB9CiAgCiAgLyogU2l0ZSBjYXJkcyAqLwogIC5z' +
+  'aXRlcy10b29sYmFyIHsgZGlzcGxheTogZmxleDsgZ2FwOiA4cHg7IGFsaWduLWl0ZW1zOiBjZW50ZXI7' +
+  'IG1hcmdpbi1ib3R0b206IDEycHg7IGZsZXgtd3JhcDogd3JhcDsgfQogIC5zaXRlcy10b29sYmFyIGlu' +
+  'cHV0W3R5cGU9InRleHQiXSB7IGZsZXg6IDE7IG1pbi13aWR0aDogMjAwcHg7IH0KICAuc2l0ZS1jYXJk' +
+  'IHsgYm9yZGVyOiAxcHggc29saWQgI2UyZThmMDsgYm9yZGVyLXJhZGl1czogOHB4OyBwYWRkaW5nOiAx' +
+  'NHB4OyBtYXJnaW4tYm90dG9tOiAxMHB4OwogICAgICAgICAgICAgICBiYWNrZ3JvdW5kOiAjZmFmYmZj' +
+  'OyB9CiAgLnNpdGUtY2FyZC5uZXcgeyBiYWNrZ3JvdW5kOiAjZWNmZGY1OyBib3JkZXItY29sb3I6ICM2' +
+  'ZWU3Yjc7IH0KICAuc2l0ZS1jYXJkLmRlbGV0ZWQgeyBiYWNrZ3JvdW5kOiAjZmVlMmUyOyBib3JkZXIt' +
+  'Y29sb3I6ICNmY2E1YTU7IG9wYWNpdHk6IDAuNjsgfQogIC5zaXRlLWNhcmQuZGVsZXRlZCAqIHsgdGV4' +
+  'dC1kZWNvcmF0aW9uOiBsaW5lLXRocm91Z2g7IH0KICAuc2l0ZS1jYXJkLWhlYWRlciB7IGRpc3BsYXk6' +
+  'IGZsZXg7IGFsaWduLWl0ZW1zOiBjZW50ZXI7IGp1c3RpZnktY29udGVudDogc3BhY2UtYmV0d2VlbjsK' +
+  'ICAgICAgICAgICAgICAgICAgICAgIGdhcDogOHB4OyBtYXJnaW4tYm90dG9tOiAxMHB4OyBwYWRkaW5n' +
+  'LWJvdHRvbTogOHB4OyBib3JkZXItYm90dG9tOiAxcHggZGFzaGVkICNlMmU4ZjA7IH0KICAuc2l0ZS1j' +
+  'YXJkLXRpdGxlIHsgZm9udC13ZWlnaHQ6IDYwMDsgZm9udC1zaXplOiAxNHB4OyBmbGV4OiAxOyB9CiAg' +
+  'LnNpdGUtY2FyZCAuZ3JpZCB7IGRpc3BsYXk6IGdyaWQ7IGdhcDogOHB4OyB9CiAgLnNpdGUtY2FyZCAu' +
+  'Z3JpZC0xIHsgZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiAxZnI7IH0KICAuc2l0ZS1jYXJkIC5ncmlkLTIg' +
+  'eyBncmlkLXRlbXBsYXRlLWNvbHVtbnM6IDFmciAxZnI7IH0KICAuc2l0ZS1jYXJkIC5ncmlkLTMgeyBn' +
+  'cmlkLXRlbXBsYXRlLWNvbHVtbnM6IDFmciAxZnIgMWZyOyB9CiAgLnNpdGUtY2FyZCAuZ3JpZC00IHsg' +
+  'Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiAxZnIgMWZyIDFmciAxZnI7IH0KICBAbWVkaWEgKG1heC13aWR0' +
+  'aDogNzAwcHgpIHsgCiAgICAuc2l0ZS1jYXJkIC5ncmlkLTIsIC5zaXRlLWNhcmQgLmdyaWQtMywgLnNp' +
+  'dGUtY2FyZCAuZ3JpZC00IHsgZ3JpZC10ZW1wbGF0ZS1jb2x1bW5zOiAxZnI7IH0gCiAgfQogIC5zaXRl' +
+  'LWNhcmQgLm1haW4tZmllbGQgeyBiYWNrZ3JvdW5kOiAjZmZmYmViOyBwYWRkaW5nOiA4cHg7IGJvcmRl' +
+  'ci1yYWRpdXM6IDZweDsgYm9yZGVyOiAxcHggc29saWQgI2ZkZTY4YTsgfQogIC5zaXRlLWNhcmQgLm1h' +
+  'aW4tZmllbGQgbGFiZWwgeyBjb2xvcjogIzkyNDAwZTsgZm9udC13ZWlnaHQ6IDcwMDsgfQogIAogIC8q' +
+  'IOWvqeafpeashOS9jSh0ZXh0YXJlYSArIOW/q+mAn+aPkuWFpSkqLwogIC5yZXZpZXctZmllbGQgeyBw' +
+  'b3NpdGlvbjogcmVsYXRpdmU7IH0KICAucmV2aWV3LWZpZWxkIC5xdWljay1idXR0b25zIHsgZGlzcGxh' +
+  'eTogZmxleDsgZ2FwOiAzcHg7IG1hcmdpbi10b3A6IDNweDsgfQogIC5yZXZpZXctZmllbGQgLnF1aWNr' +
+  'LWJ1dHRvbnMgYnV0dG9uIHsgCiAgICBmbGV4OiAxOyBwYWRkaW5nOiA0cHggOHB4OyBmb250LXNpemU6' +
+  'IDEzcHg7IGZvbnQtd2VpZ2h0OiA2MDA7CiAgICBiYWNrZ3JvdW5kOiB3aGl0ZTsgYm9yZGVyOiAxcHgg' +
+  'c29saWQgI2UyZThmMDsgY29sb3I6ICM0NzU1Njk7IGJvcmRlci1yYWRpdXM6IDRweDsKICB9CiAgLnJl' +
+  'dmlldy1maWVsZCAucXVpY2stYnV0dG9ucyBidXR0b246aG92ZXIgeyBiYWNrZ3JvdW5kOiAjZjBmZGZh' +
+  'OyBib3JkZXItY29sb3I6ICM1ZWVhZDQ7IGNvbG9yOiAjMGQ5NDg4OyB9CiAgCiAgLyogU3RhdHVzIGJh' +
+  'ZGdlICovCiAgLnN0YXR1cy1iYWRnZSB7IGRpc3BsYXk6IGlubGluZS1ibG9jazsgcGFkZGluZzogMnB4' +
+  'IDhweDsgYm9yZGVyLXJhZGl1czogNHB4OwogICAgICAgICAgICAgICAgICBmb250LXNpemU6IDExcHg7' +
+  'IGZvbnQtd2VpZ2h0OiA2MDA7IH0KICAuc3RhdHVzLW5ldyB7IGJhY2tncm91bmQ6ICNkMWZhZTU7IGNv' +
+  'bG9yOiAjMDQ3ODU3OyB9CiAgLnN0YXR1cy1kZWxldGVkIHsgYmFja2dyb3VuZDogI2ZlZTJlMjsgY29s' +
+  'b3I6ICM5OTFiMWI7IH0KICAuc3RhdHVzLW1vZGlmaWVkIHsgYmFja2dyb3VuZDogI2ZlZjNjNzsgY29s' +
+  'b3I6ICM5MjQwMGU7IH0KICAKICAvKiBTdWJtaXQgYXJlYSAqLwogIC5zdWJtaXQtYXJlYSB7IGJhY2tn' +
+  'cm91bmQ6IHdoaXRlOyBib3JkZXItcmFkaXVzOiAxMnB4OyBwYWRkaW5nOiAyNHB4OwogICAgICAgICAg' +
+  'ICAgICAgIGJveC1zaGFkb3c6IDAgMXB4IDNweCByZ2JhKDAsMCwwLDAuMDYpOyB0ZXh0LWFsaWduOiBj' +
+  'ZW50ZXI7IH0KICAuc3VibWl0LWFyZWEgLmNvbmZpcm0geyBkaXNwbGF5OiBmbGV4OyBhbGlnbi1pdGVt' +
+  'czogY2VudGVyOyBqdXN0aWZ5LWNvbnRlbnQ6IGNlbnRlcjsgZ2FwOiA4cHg7CiAgICAgICAgICAgICAg' +
+  'ICAgICAgICAgICAgbWFyZ2luLWJvdHRvbTogMTZweDsgZm9udC1zaXplOiAxNHB4OyB9CiAgLnN1Ym1p' +
+  'dC1hcmVhIC5jb25maXJtIGlucHV0W3R5cGU9ImNoZWNrYm94Il0geyB3aWR0aDogMThweDsgaGVpZ2h0' +
+  'OiAxOHB4OyBjdXJzb3I6IHBvaW50ZXI7IH0KICAKICAvKiBFbXB0eSAqLwogIC5lbXB0eSB7IHRleHQt' +
+  'YWxpZ246IGNlbnRlcjsgcGFkZGluZzogMzJweDsgY29sb3I6ICM5NGEzYjg7IH0KICAuZm9vdGVyIHsg' +
+  'Y29sb3I6ICM5NGEzYjg7IGZvbnQtc2l6ZTogMTJweDsgdGV4dC1hbGlnbjogY2VudGVyOyBtYXJnaW4t' +
+  'dG9wOiAyNHB4OyBwYWRkaW5nOiAxNnB4OyB9CiAgCiAgLyogU3ViLXNlY3Rpb24gKi8KICAuc3Vic2Vj' +
+  'dGlvbi10aXRsZSB7IGZvbnQtc2l6ZTogMTJweDsgZm9udC13ZWlnaHQ6IDcwMDsgY29sb3I6ICM2NDc0' +
+  'OGI7IHRleHQtdHJhbnNmb3JtOiB1cHBlcmNhc2U7CiAgICAgICAgICAgICAgICAgICAgICBsZXR0ZXIt' +
+  'c3BhY2luZzogMC4wNmVtOyBtYXJnaW46IDEycHggMCA2cHg7IHBhZGRpbmctdG9wOiA4cHg7IAogICAg' +
+  'ICAgICAgICAgICAgICAgICAgYm9yZGVyLXRvcDogMXB4IGRhc2hlZCAjZTJlOGYwOyB9Cjwvc3R5bGU+' +
+  'CjwvaGVhZD4KPGJvZHk+Cgo8ZGl2IGNsYXNzPSJjb250YWluZXIiPgoKPCEtLSA9PT09PT09PT09PT0g' +
+  'SGVhZGVyID09PT09PT09PT09PSAtLT4KPGRpdiBjbGFzcz0iaGVhZGVyIj4KICA8ZGl2IHN0eWxlPSJk' +
+  'aXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxMnB4O21hcmdpbi1ib3R0b206OHB4Ij4K' +
+  'ICAgIDxzcGFuIHN0eWxlPSJmb250LXNpemU6MjhweCI+8J+Tizwvc3Bhbj4KICAgIDxkaXY+CiAgICAg' +
+  'IDxoMT5fX1BFUklPRF9fIOaciOWgseWhq+WgsTwvaDE+CiAgICAgIDxkaXYgY2xhc3M9Im1ldGEiPgog' +
+  'ICAgICAgIDxzcGFuIGNsYXNzPSJiYWRnZSI+X19QRVJJT0RfTEFCRUxfXzwvc3Bhbj4KICAgICAgICDo' +
+  'vrLnlLDmsLTliKnnvbIgwrcg5rC05Z+f5Z6L6L6y5qWt57ag6IO9IOeuoeWItuiAg+aguOioiOeVqwog' +
+  'ICAgICA8L2Rpdj4KICAgIDwvZGl2PgogIDwvZGl2PgogIDxkaXYgY2xhc3M9Im1ldGEiIHN0eWxlPSJt' +
+  'YXJnaW4tdG9wOjEwcHg7cGFkZGluZy10b3A6MTBweDtib3JkZXItdG9wOjFweCBzb2xpZCAjZTJlOGYw' +
+  'Ij4KICAgIOW/q+eFp+aXpeacnzpfX1NOQVBTSE9UX0RBVEVfX+OAgOKUguOAgOizh+aWmeS+hua6kDpf' +
+  'X1NOQVBTSE9UX1NPVVJDRV9fCiAgPC9kaXY+CjwvZGl2PgoKPCEtLSA9PT09PT09PT09PT0gU3RlcCAx' +
+  'OiDln7rmnKzos4fmlpkgPT09PT09PT09PT09IC0tPgo8ZGl2IGNsYXNzPSJjYXJkIiBpZD0ic3RlcDEi' +
+  'PgogIDxoMj7wn5GkIOesrOS4gOatpTrln7rmnKzos4fmlpk8L2gyPgogIDxwIGNsYXNzPSJzdWJ0aXRs' +
+  'ZSI+6KuL5YWI6YG45pOH5oKo55qE566h55CG6JmVLOS4puWhq+WFpeWhq+WgseS6uuizh+ioijwvcD4K' +
+  'ICAKICA8ZGl2IGNsYXNzPSJmb3JtLXJvdyI+CiAgICA8ZGl2PgogICAgICA8bGFiZWw+566h55CG6JmV' +
+  'PHNwYW4gY2xhc3M9InJlcSI+Kjwvc3Bhbj48L2xhYmVsPgogICAgICA8c2VsZWN0IGlkPSJtZ210LXNl' +
+  'bGVjdCIgb25jaGFuZ2U9Im9uTWdtdENoYW5nZSgpIj4KICAgICAgICA8b3B0aW9uIHZhbHVlPSIiPi0t' +
+  'IOiri+mBuOaThyAtLTwvb3B0aW9uPgogICAgICAgIDxvcHRpb24gdmFsdWU9Iuahg+WckiI+5qGD5ZyS' +
+  '566h55CG6JmVPC9vcHRpb24+CiAgICAgICAgPG9wdGlvbiB2YWx1ZT0i55+z6ZaAIj7nn7PploDnrqHn' +
+  'kIbomZU8L29wdGlvbj4KICAgICAgICA8b3B0aW9uIHZhbHVlPSLmlrDnq7kiPuaWsOerueeuoeeQhuiZ' +
+  'lTwvb3B0aW9uPgogICAgICAgIDxvcHRpb24gdmFsdWU9IuiLl+aglyI+6IuX5qCX566h55CG6JmVPC9v' +
+  'cHRpb24+CiAgICAgICAgPG9wdGlvbiB2YWx1ZT0i6Ie65LitIj7oh7rkuK3nrqHnkIbomZU8L29wdGlv' +
+  'bj4KICAgICAgICA8b3B0aW9uIHZhbHVlPSLljZfmipUiPuWNl+aKleeuoeeQhuiZlTwvb3B0aW9uPgog' +
+  'ICAgICAgIDxvcHRpb24gdmFsdWU9IuW9sOWMliI+5b2w5YyW566h55CG6JmVPC9vcHRpb24+CiAgICAg' +
+  'ICAgPG9wdGlvbiB2YWx1ZT0i6Zuy5p6XIj7pm7LmnpfnrqHnkIbomZU8L29wdGlvbj4KICAgICAgICA8' +
+  'b3B0aW9uIHZhbHVlPSLlmInljZciPuWYieWNl+euoeeQhuiZlTwvb3B0aW9uPgogICAgICAgIDxvcHRp' +
+  'b24gdmFsdWU9IumrmOmbhCI+6auY6ZuE566h55CG6JmVPC9vcHRpb24+CiAgICAgICAgPG9wdGlvbiB2' +
+  'YWx1ZT0i5bGP5p2xIj7lsY/mnbHnrqHnkIbomZU8L29wdGlvbj4KICAgICAgICA8b3B0aW9uIHZhbHVl' +
+  'PSLlrpzomK0iPuWunOiYreeuoeeQhuiZlTwvb3B0aW9uPgogICAgICAgIDxvcHRpb24gdmFsdWU9IuiK' +
+  'seiTriI+6Iqx6JOu566h55CG6JmVPC9vcHRpb24+CiAgICAgICAgPG9wdGlvbiB2YWx1ZT0i6Ie65p2x' +
+  'Ij7oh7rmnbHnrqHnkIbomZU8L29wdGlvbj4KICAgICAgPC9zZWxlY3Q+CiAgICA8L2Rpdj4KICA8L2Rp' +
+  'dj4KICAKICA8ZGl2IGNsYXNzPSJmb3JtLXJvdyBjb2xzLTIiPgogICAgPGRpdj4KICAgICAgPGxhYmVs' +
+  'PuWhq+WgseS6uuWnk+WQjTxzcGFuIGNsYXNzPSJyZXEiPio8L3NwYW4+PC9sYWJlbD4KICAgICAgPGlu' +
+  'cHV0IHR5cGU9InRleHQiIGlkPSJmaWxsZXItbmFtZSIgcGxhY2Vob2xkZXI9IuS+izrnjovlpKfmmI4i' +
+  'PgogICAgPC9kaXY+CiAgICA8ZGl2PgogICAgICA8bGFiZWw+6IGv57Wh6Zu76KmxPC9sYWJlbD4KICAg' +
+  'ICAgPGlucHV0IHR5cGU9InRlbCIgaWQ9ImZpbGxlci1waG9uZSIgcGxhY2Vob2xkZXI9IuS+izowOTEy' +
+  'LTM0NS02NzgiPgogICAgPC9kaXY+CiAgPC9kaXY+CjwvZGl2PgoKPCEtLSA9PT09PT09PT09PT0gU3Rl' +
+  'cCAyOiDmoYjloLTos4fmlpko6YG45LqG566h55CG6JmV5omN5Ye654++KT09PT09PT09PT09PSAtLT4K' +
+  'PGRpdiBpZD0ic3RlcDIiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPgogIDxkaXYgY2xhc3M9ImNhcmQiPgog' +
+  'ICAgPCEtLSDnrKzkuIDlsaQgVGFiIC0tPgogICAgPGRpdiBjbGFzcz0idGFicy1sMSI+CiAgICAgIDxi' +
+  'dXR0b24gaWQ9InRhYi1zb2xhciIgY2xhc3M9ImFjdGl2ZSIgb25jbGljaz0ic3dpdGNoQ2F0ZWdvcnko' +
+  'J3NvbGFyJykiPgogICAgICAgIOKYgO+4jyDlpKrpmb3lhYnpm7sgPHNwYW4gaWQ9InRhYi1zb2xhci1j' +
+  'b3VudCIgc3R5bGU9ImNvbG9yOiM5NGEzYjg7Zm9udC13ZWlnaHQ6NDAwO2ZvbnQtc2l6ZToxMnB4O21h' +
+  'cmdpbi1sZWZ0OjRweCI+PC9zcGFuPgogICAgICA8L2J1dHRvbj4KICAgICAgPGJ1dHRvbiBpZD0idGFi' +
+  'LWh5ZHJvIiBvbmNsaWNrPSJzd2l0Y2hDYXRlZ29yeSgnaHlkcm8nKSI+CiAgICAgICAg8J+SpyDlsI/m' +
+  'sLTlipsgPHNwYW4gaWQ9InRhYi1oeWRyby1jb3VudCIgc3R5bGU9ImNvbG9yOiM5NGEzYjg7Zm9udC13' +
+  'ZWlnaHQ6NDAwO2ZvbnQtc2l6ZToxMnB4O21hcmdpbi1sZWZ0OjRweCI+PC9zcGFuPgogICAgICA8L2J1' +
+  'dHRvbj4KICAgIDwvZGl2PgogICAgCiAgICA8IS0tIOWkqumZveWFiembuyBjb250ZW50IC0tPgogICAg' +
+  'PGRpdiBpZD0iY29udGVudC1zb2xhciI+CiAgICAgIDxkaXYgY2xhc3M9InNpdGVzLXRvb2xiYXIiPgog' +
+  'ICAgICAgIDxpbnB1dCB0eXBlPSJ0ZXh0IiBpZD0ic29sYXItc2VhcmNoIiBwbGFjZWhvbGRlcj0i8J+U' +
+  'jSDmkJzlsIvmoYjloLTlkI3nqLHmiJblu6DllYYuLi4iIG9uaW5wdXQ9InJlbmRlclNpdGVzKCdzb2xh' +
+  'cl9hZGRlbmR1bScpIj4KICAgICAgICA8YnV0dG9uIG9uY2xpY2s9ImFkZFNpdGUoJ3NvbGFyX2FkZGVu' +
+  'ZHVtJykiPisg5paw5aKe5aSq6Zm95YWJ6Zu75qGI5aC0PC9idXR0b24+CiAgICAgIDwvZGl2PgogICAg' +
+  'ICA8ZGl2IGlkPSJsaXN0LXNvbGFyX2FkZGVuZHVtIj48L2Rpdj4KICAgIDwvZGl2PgogICAgCiAgICA8' +
+  'IS0tIOWwj+awtOWKmyBjb250ZW50KOWFp+WQqyA0IOWAi+WtkOWIhumggSktLT4KICAgIDxkaXYgaWQ9' +
+  'ImNvbnRlbnQtaHlkcm8iIHN0eWxlPSJkaXNwbGF5Om5vbmUiPgogICAgICA8IS0tIOesrOS6jOWxpCBU' +
+  'YWIgLS0+CiAgICAgIDxkaXYgY2xhc3M9InRhYnMtbDIiPgogICAgICAgIDxidXR0b24gaWQ9InN1YnRh' +
+  'Yi10ZW5kZXIiIGNsYXNzPSJhY3RpdmUiIG9uY2xpY2s9InN3aXRjaEh5ZHJvU3VidGFiKCdoeWRyb190' +
+  'ZW5kZXInKSI+CiAgICAgICAgICDwn4+377iPIOaLm+aomeahiCA8c3BhbiBpZD0ic3VidGFiLXRlbmRl' +
+  'ci1jb3VudCIgc3R5bGU9ImNvbG9yOiM5NGEzYjg7Zm9udC13ZWlnaHQ6NDAwO2ZvbnQtc2l6ZToxMnB4' +
+  'Ij4wPC9zcGFuPgogICAgICAgIDwvYnV0dG9uPgogICAgICAgIDxidXR0b24gaWQ9InN1YnRhYi10ZXN0' +
+  'IiBvbmNsaWNrPSJzd2l0Y2hIeWRyb1N1YnRhYignaHlkcm9fdGVzdCcpIj4KICAgICAgICAgIPCfp6og' +
+  '5ris6Kmm5qGIIDxzcGFuIGlkPSJzdWJ0YWItdGVzdC1jb3VudCIgc3R5bGU9ImNvbG9yOiM5NGEzYjg7' +
+  'Zm9udC13ZWlnaHQ6NDAwO2ZvbnQtc2l6ZToxMnB4Ij4wPC9zcGFuPgogICAgICAgIDwvYnV0dG9uPgog' +
+  'ICAgICAgIDxidXR0b24gaWQ9InN1YnRhYi1wb3RlbnRpYWwiIG9uY2xpY2s9InN3aXRjaEh5ZHJvU3Vi' +
+  'dGFiKCdoeWRyb19wb3RlbnRpYWwnKSI+CiAgICAgICAgICDinKgg5r2b5Yqb5qGI5aC0IDxzcGFuIGlk' +
+  'PSJzdWJ0YWItcG90ZW50aWFsLWNvdW50IiBzdHlsZT0iY29sb3I6Izk0YTNiODtmb250LXdlaWdodDo0' +
+  'MDA7Zm9udC1zaXplOjEycHgiPjA8L3NwYW4+CiAgICAgICAgPC9idXR0b24+CiAgICAgICAgPGJ1dHRv' +
+  'biBpZD0ic3VidGFiLWlucXVpcnkiIG9uY2xpY2s9InN3aXRjaEh5ZHJvU3VidGFiKCdoeWRyb19pbnF1' +
+  'aXJ5JykiPgogICAgICAgICAg8J+TniDmtL3oqaLntIDpjIQgPHNwYW4gaWQ9InN1YnRhYi1pbnF1aXJ5' +
+  'LWNvdW50IiBzdHlsZT0iY29sb3I6Izk0YTNiODtmb250LXdlaWdodDo0MDA7Zm9udC1zaXplOjEycHgi' +
+  'PjA8L3NwYW4+CiAgICAgICAgPC9idXR0b24+CiAgICAgIDwvZGl2PgogICAgICAKICAgICAgPGRpdiBp' +
+  'ZD0ic3ViLXRlbmRlciI+CiAgICAgICAgPGRpdiBjbGFzcz0ic2l0ZXMtdG9vbGJhciI+CiAgICAgICAg' +
+  'ICA8aW5wdXQgdHlwZT0idGV4dCIgaWQ9InRlbmRlci1zZWFyY2giIHBsYWNlaG9sZGVyPSLwn5SNIOaQ' +
+  'nOWwiy4uLiIgb25pbnB1dD0icmVuZGVyU2l0ZXMoJ2h5ZHJvX3RlbmRlcicpIj4KICAgICAgICAgIDxi' +
+  'dXR0b24gb25jbGljaz0iYWRkU2l0ZSgnaHlkcm9fdGVuZGVyJykiPisg5paw5aKe5oub5qiZ5qGIPC9i' +
+  'dXR0b24+CiAgICAgICAgPC9kaXY+CiAgICAgICAgPGRpdiBpZD0ibGlzdC1oeWRyb190ZW5kZXIiPjwv' +
+  'ZGl2PgogICAgICA8L2Rpdj4KICAgICAgCiAgICAgIDxkaXYgaWQ9InN1Yi10ZXN0IiBzdHlsZT0iZGlz' +
+  'cGxheTpub25lIj4KICAgICAgICA8ZGl2IGNsYXNzPSJzaXRlcy10b29sYmFyIj4KICAgICAgICAgIDxp' +
+  'bnB1dCB0eXBlPSJ0ZXh0IiBpZD0idGVzdC1zZWFyY2giIHBsYWNlaG9sZGVyPSLwn5SNIOaQnOWwiy4u' +
+  'LiIgb25pbnB1dD0icmVuZGVyU2l0ZXMoJ2h5ZHJvX3Rlc3QnKSI+CiAgICAgICAgICA8YnV0dG9uIG9u' +
+  'Y2xpY2s9ImFkZFNpdGUoJ2h5ZHJvX3Rlc3QnKSI+KyDmlrDlop7muKzoqabmoYg8L2J1dHRvbj4KICAg' +
+  'ICAgICA8L2Rpdj4KICAgICAgICA8ZGl2IGlkPSJsaXN0LWh5ZHJvX3Rlc3QiPjwvZGl2PgogICAgICA8' +
+  'L2Rpdj4KICAgICAgCiAgICAgIDxkaXYgaWQ9InN1Yi1wb3RlbnRpYWwiIHN0eWxlPSJkaXNwbGF5Om5v' +
+  'bmUiPgogICAgICAgIDxkaXYgY2xhc3M9InNpdGVzLXRvb2xiYXIiPgogICAgICAgICAgPGlucHV0IHR5' +
+  'cGU9InRleHQiIGlkPSJwb3RlbnRpYWwtc2VhcmNoIiBwbGFjZWhvbGRlcj0i8J+UjSDmkJzlsIsuLi4i' +
+  'IG9uaW5wdXQ9InJlbmRlclNpdGVzKCdoeWRyb19wb3RlbnRpYWwnKSI+CiAgICAgICAgICA8YnV0dG9u' +
+  'IG9uY2xpY2s9ImFkZFNpdGUoJ2h5ZHJvX3BvdGVudGlhbCcpIj4rIOaWsOWinua9m+WKm+ahiOWgtDwv' +
+  'YnV0dG9uPgogICAgICAgIDwvZGl2PgogICAgICAgIDxkaXYgaWQ9Imxpc3QtaHlkcm9fcG90ZW50aWFs' +
+  'Ij48L2Rpdj4KICAgICAgPC9kaXY+CiAgICAgIAogICAgICA8ZGl2IGlkPSJzdWItaW5xdWlyeSIgc3R5' +
+  'bGU9ImRpc3BsYXk6bm9uZSI+CiAgICAgICAgPGRpdiBjbGFzcz0ic2l0ZXMtdG9vbGJhciI+CiAgICAg' +
+  'ICAgICA8aW5wdXQgdHlwZT0idGV4dCIgaWQ9ImlucXVpcnktc2VhcmNoIiBwbGFjZWhvbGRlcj0i8J+U' +
+  'jSDmkJzlsIsuLi4iIG9uaW5wdXQ9InJlbmRlclNpdGVzKCdoeWRyb19pbnF1aXJ5JykiPgogICAgICAg' +
+  'ICAgPGJ1dHRvbiBvbmNsaWNrPSJhZGRTaXRlKCdoeWRyb19pbnF1aXJ5JykiPisg5paw5aKe5rS96Kmi' +
+  '57SA6YyEPC9idXR0b24+CiAgICAgICAgPC9kaXY+CiAgICAgICAgPGRpdiBpZD0ibGlzdC1oeWRyb19p' +
+  'bnF1aXJ5Ij48L2Rpdj4KICAgICAgPC9kaXY+CiAgICA8L2Rpdj4KICA8L2Rpdj4KPC9kaXY+Cgo8IS0t' +
+  'ID09PT09PT09PT09PSBTdGVwIDM6IOaPkOS6pCA9PT09PT09PT09PT0gLS0+CjxkaXYgaWQ9InN0ZXAz' +
+  'IiBjbGFzcz0ic3VibWl0LWFyZWEiIHN0eWxlPSJkaXNwbGF5Om5vbmUiPgogIDxoMiBzdHlsZT0ibWFy' +
+  'Z2luOjAgMCAxMnB4Ij7wn5OkIOesrOS4ieatpTrmj5DkuqTloavloLE8L2gyPgogIDxwIHN0eWxlPSJj' +
+  'b2xvcjojNDc1NTY5O21hcmdpbjowIDAgMTZweCI+56K66KqN5omA5pyJ6LOH5paZ54Sh6Kqk5b6MLOm7' +
+  'nuS4i+aWueaMiemIleS4i+i8ieWhq+WgsSBFeGNlbCzkuIrlgrPoh7PmjIflrprpm7Lnq6/os4fmlpnl' +
+  'pL7jgII8L3A+CiAgCiAgPGRpdiBjbGFzcz0iY29uZmlybSI+CiAgICA8aW5wdXQgdHlwZT0iY2hlY2ti' +
+  'b3giIGlkPSJjb25maXJtLWNoZWNrIiBvbmNoYW5nZT0ib25Db25maXJtQ2hhbmdlKCkiPgogICAgPGxh' +
+  'YmVsIGZvcj0iY29uZmlybS1jaGVjayIgc3R5bGU9Im1hcmdpbjowO2N1cnNvcjpwb2ludGVyIj7miJHl' +
+  't7LmqqLmn6XmiYDmnInmoYjloLTos4fmlpnnhKHoqqQs5Y+v5Lul5LiL6LyJ5aGr5aCx5qqUPC9sYWJl' +
+  'bD4KICA8L2Rpdj4KICAKICA8YnV0dG9uIGlkPSJzdWJtaXQtYnRuIiBjbGFzcz0iYnRuLXN1Y2Nlc3Mg' +
+  'YnRuLWxhcmdlIiBvbmNsaWNrPSJkb3dubG9hZEV4Y2VsKCkiIGRpc2FibGVkPgogICAg8J+TpSDkuIvo' +
+  'vInloavloLEgRXhjZWwKICA8L2J1dHRvbj4KICAKICA8cCBzdHlsZT0ibWFyZ2luLXRvcDoxNnB4O2Zv' +
+  'bnQtc2l6ZToxM3B4O2NvbG9yOiM2NDc0OGIiPgogICAg5LiL6LyJ5b6M6KuL5L6d54++5pyJ5L2c5qWt' +
+  '5rWB56iLLOS4iuWCs+iHs+aMh+Wumumbsuerr+izh+aWmeWkvgogIDwvcD4KPC9kaXY+Cgo8ZGl2IGNs' +
+  'YXNzPSJmb290ZXIiPgogIOi+sueUsOawtOWIqee9siDCtyDmsLTln5/lnovovrLmpa3ntqDog73oqK3n' +
+  'va7ntqDog73oqK3mlr3nrqHliLbogIPmoLjoqIjnlas8YnI+CiAg5pyf5YilOl9fUEVSSU9EX1/jgIDi' +
+  'lILjgIDnlKLnlJ/mmYLplpM6X19DUkVBVEVEX0FUX18KPC9kaXY+Cgo8L2Rpdj4KCjwhLS0g5b+r54Wn' +
+  '6LOH5paZIC0tPgpfX1NOQVBTSE9UX1NDUklQVF9UQUdfT1BFTl9fdHlwZT0iYXBwbGljYXRpb24vanNv' +
+  'biIgaWQ9InNuYXBzaG90LWRhdGEiPl9fU05BUFNIT1RfSlNPTl9fX19TTkFQU0hPVF9TQ1JJUFRfVEFH' +
+  'X0NMT1NFX18KX19TTkFQU0hPVF9TQ1JJUFRfVEFHX09QRU5fX3R5cGU9ImFwcGxpY2F0aW9uL2pzb24i' +
+  'IGlkPSJzbmFwc2hvdC1tZXRhZGF0YSI+X19NRVRBREFUQV9KU09OX19fX1NOQVBTSE9UX1NDUklQVF9U' +
+  'QUdfQ0xPU0VfXwoKPHNjcmlwdD4KLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09' +
+  'PT09PT09PT09PT09PT09PT09PT09PT09PQovLyDmnIjloLHloavloLHpoIHpnaLpgo/ovK8oU3RhZ2Ug' +
+  'QyAtIDUg5YCLIHNoZWV0IOWujOaVtOeJiCkKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09' +
+  'PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQoKY29uc3QgU05BUFNIT1QgPSBKU09OLnBhcnNl' +
+  'KGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdzbmFwc2hvdC1kYXRhJykudGV4dENvbnRlbnQpOwpjb25z' +
+  'dCBNRVRBREFUQSA9IEpTT04ucGFyc2UoZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3NuYXBzaG90LW1l' +
+  'dGFkYXRhJykudGV4dENvbnRlbnQpOwoKLy8g5aSq6Zm95YWJ6Zu744CM5qGI5aC06YCy5bqm44CN5Y+v' +
+  '6IO955qE5YC8CmNvbnN0IFNPTEFSX1BST0dSRVNTX09QVElPTlMgPSBbJ+eUs+ioreS4rScsICflvoXm' +
+  'lr3lt6UnLCAn6KaP5YqD5o6o5YuVJywgJ+W3suS9tee2si3mt7flkIgnLCAn5bey5L2157ayJ107Ci8v' +
+  'IOWkqumZveWFiembu+OAjOebruWJjemajuauteOAjeWPr+iDveeahOWAvApjb25zdCBTT0xBUl9TVEFH' +
+  'RV9PUFRJT05TID0gWyflnJ/lnLDlrrnoqLEnLCAn5pa95bel6ZqO5q61JywgJ+S9teiBr+WvqeafpScs' +
+  'ICflt7Lop6PntIQnLCAn5bCa5pyq6YCB5Lu2JywgJ+W3suS9tee2sicsICfkvbXoga/lr6nmn6Uo5pyq' +
+  '6YCBKScsICfpm7vmpa3nsYzoqK0nXTsKLy8g5rS96Kmi5pa55byPCmNvbnN0IElOUVVJUllfTUVUSE9E' +
+  'UyA9IFsn6Zu76KmxJywgJ+aLnOioqicsICfkvoblh70nLCAn5pyD5YuYJywgJ+WFtuS7liddOwovLyDm' +
+  'tL3oqaLpoZ7lnosKY29uc3QgSU5RVUlSWV9UWVBFUyA9IFsn5ris6KmmJywgJ+aLm+aomScsICflhbbk' +
+  'u5YnXTsKLy8gMTEg5YCL5a+p5p+l5qyE5L2NIGtleQpjb25zdCBSRVZJRVdfRklFTERTID0gWwogIHsg' +
+  'a2V5OiAnZmVlZGVyJywgbGFiZWw6ICfppYvnt5rkv53nlZknIH0sCiAgeyBrZXk6ICdpbnRlcm5hbF9y' +
+  'ZXZpZXcnLCBsYWJlbDogJ+euoeeQhuiZleWFp+mDqOWvqeafpScgfSwKICB7IGtleTogJ3RhaXBvd2Vy' +
+  'X3JldmlldycsIGxhYmVsOiAn5Y+w6Zu75L216IGv5a+p5p+lJyB9LAogIHsga2V5OiAnd2F0ZXJfcmln' +
+  'aHQnLCBsYWJlbDogJ+awtOasiueUs+iriycgfSwKICB7IGtleTogJ3dhdGVyX3N0cnVjdHVyZScsIGxh' +
+  'YmVsOiAn5rC05Yip5bu66YCg54mp55Sz6KuLJyB9LAogIHsga2V5OiAnc29pbF9jb25zZXJ2YXRpb24n' +
+  'LCBsYWJlbDogJ+awtOS/neioiOeVq+eUs+iriycgfSwKICB7IGtleTogJ2xhbmRfcGVybWl0JywgbGFi' +
+  'ZWw6ICflnJ/lnLDlrrnoqLEo5ZCr6L6y5qWt6K6K5pu0KScgfSwKICB7IGtleTogJ2VsZWN0cmljX3Nl' +
+  'dHVwJywgbGFiZWw6ICfpm7vmpa3nsYzoqK0nIH0sCiAgeyBrZXk6ICdjb25zZW50X2ZpbGVkJywgbGFi' +
+  'ZWw6ICflkIzmhI/lgpnmoYgnIH0sCiAgeyBrZXk6ICdicmllZmluZycsIGxhYmVsOiAn6Kqq5piO5pyD' +
+  'JyB9LAogIHsga2V5OiAnY29uc3RydWN0aW9uX3Blcm1pdCcsIGxhYmVsOiAn5pa95bel6Kix5Y+vJyB9' +
+  'Cl07CgovLyDlhajln5/ni4DmhYsKY29uc3Qgc3RhdGUgPSB7CiAgbWdtdDogJycsCiAgZmlsbGVyTmFt' +
+  'ZTogJycsCiAgZmlsbGVyUGhvbmU6ICcnLAogIGNhdGVnb3J5OiAnc29sYXInLCAgICAgICAgLy8gJ3Nv' +
+  'bGFyJyBvciAnaHlkcm8nCiAgaHlkcm9TdWJ0YWI6ICdoeWRyb190ZW5kZXInLAogIGRhdGE6IHsKICAg' +
+  'IHNvbGFyX2FkZGVuZHVtOiBbXSwKICAgIGh5ZHJvX3RlbmRlcjogW10sCiAgICBoeWRyb190ZXN0OiBb' +
+  'XSwKICAgIGh5ZHJvX3BvdGVudGlhbDogW10sCiAgICBoeWRyb19pbnF1aXJ5OiBbXQogIH0KfTsKCmxl' +
+  'dCBfbmV3SWRDb3VudGVyID0gMDsKZnVuY3Rpb24gbmV4dE5ld0lkKCkgeyBfbmV3SWRDb3VudGVyKys7' +
+  'IHJldHVybiAnTkVXXycgKyBTdHJpbmcoX25ld0lkQ291bnRlcikucGFkU3RhcnQoMywgJzAnKTsgfQoK' +
+  'ZnVuY3Rpb24gaHRtbEVzY2FwZShzKSB7CiAgcmV0dXJuIFN0cmluZyhzID09IG51bGwgPyAnJyA6IHMp' +
+  'LnJlcGxhY2UoL1smPD4iXS9nLCBjID0+ICh7ICcmJzonJmFtcDsnLCAnPCc6JyZsdDsnLCAnPic6JyZn' +
+  'dDsnLCAnIic6JyZxdW90OycgfVtjXSkpOwp9CgpmdW5jdGlvbiBpc01vZGlmaWVkKHMpIHsKICBpZiAo' +
+  'cy5fbmV3IHx8IHMuX2RlbGV0ZWQpIHJldHVybiBmYWxzZTsKICBjb25zdCBjdXJyZW50ID0geyAuLi5z' +
+  'IH07CiAgZGVsZXRlIGN1cnJlbnQuX2tpbmQ7IGRlbGV0ZSBjdXJyZW50Ll9pZHg7IGRlbGV0ZSBjdXJy' +
+  'ZW50Ll9pZDsKICBkZWxldGUgY3VycmVudC5fbmV3OyBkZWxldGUgY3VycmVudC5fZGVsZXRlZDsgZGVs' +
+  'ZXRlIGN1cnJlbnQuX29yaWdpbmFsOwogIHRyeSB7CiAgICByZXR1cm4gSlNPTi5zdHJpbmdpZnkoY3Vy' +
+  'cmVudCkgIT09IHMuX29yaWdpbmFsOwogIH0gY2F0Y2goZSkgeyByZXR1cm4gZmFsc2U7IH0KfQoKLy8g' +
+  '566h55CG6JmV5pS56K6KIOKGkiDovInlhaXoqbLomZUgNSDnqK7os4fmlpkKZnVuY3Rpb24gb25NZ210' +
+  'Q2hhbmdlKCkgewogIGNvbnN0IHNlbCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdtZ210LXNlbGVj' +
+  'dCcpOwogIGNvbnN0IG1nbXQgPSBzZWwudmFsdWU7CiAgc3RhdGUubWdtdCA9IG1nbXQ7CiAgCiAgaWYg' +
+  'KCFtZ210KSB7CiAgICBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnc3RlcDInKS5zdHlsZS5kaXNwbGF5' +
+  'ID0gJ25vbmUnOwogICAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3N0ZXAzJykuc3R5bGUuZGlzcGxh' +
+  'eSA9ICdub25lJzsKICAgIHJldHVybjsKICB9CiAgCiAgLy8g5b6eIHNuYXBzaG90IOaSiOWHuuipsuiZ' +
+  'leeahOaJgOacieizh+aWmSAtIOazqOaEjyBtZ210IOWQjeeoseWPr+iDveacieOAjOWPsOS4rS/oh7rk' +
+  'uK3jgI3lt67nlbAs5YGa5a+s6ayG5q+U5bCNCiAgY29uc3QgbWdtdE1hdGNoID0gKGEsIGIpID0+IHsK' +
+  'ICAgIGlmICghYSB8fCAhYikgcmV0dXJuIGZhbHNlOwogICAgY29uc3Qgbm9ybSA9IHMgPT4gcy5yZXBs' +
+  'YWNlKC9e5Y+wLywgJ+iHuicpOyAgLy8g57Wx5LiA55So44CM6Ie644CNCiAgICByZXR1cm4gbm9ybShh' +
+  'KSA9PT0gbm9ybShiKTsKICB9OwogIAogIFsnc29sYXJfYWRkZW5kdW0nLCAnaHlkcm9fdGVuZGVyJywg' +
+  'J2h5ZHJvX3Rlc3QnLCAnaHlkcm9fcG90ZW50aWFsJywgJ2h5ZHJvX2lucXVpcnknXS5mb3JFYWNoKGtl' +
+  'eSA9PiB7CiAgICBzdGF0ZS5kYXRhW2tleV0gPSAoU05BUFNIT1Rba2V5XSB8fCBbXSkuZmlsdGVyKHMg' +
+  'PT4gbWdtdE1hdGNoKHMubWdtdCwgbWdtdCkpLm1hcCgocywgaSkgPT4gKHsKICAgICAgLi4ucywKICAg' +
+  'ICAgX2lkeDogaSwKICAgICAgX2lkOiBrZXkgKyAnXycgKyBpLAogICAgICBfbmV3OiBmYWxzZSwKICAg' +
+  'ICAgX2RlbGV0ZWQ6IGZhbHNlLAogICAgICBfb3JpZ2luYWw6IEpTT04uc3RyaW5naWZ5KHMpCiAgICB9' +
+  'KSk7CiAgfSk7CiAgCiAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3N0ZXAyJykuc3R5bGUuZGlzcGxh' +
+  'eSA9ICcnOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdzdGVwMycpLnN0eWxlLmRpc3BsYXkgPSAn' +
+  'JzsKICAKICAvLyDpoJDoqK3poa/npLrlpKrpmb3lhYnpm7sKICBzd2l0Y2hDYXRlZ29yeSgnc29sYXIn' +
+  'KTsKfQoKLy8g5YiH5o+bIEwxIFRhYijlpKrpmb3lhYnpm7sgLyDlsI/msLTlipspCmZ1bmN0aW9uIHN3' +
+  'aXRjaENhdGVnb3J5KGNhdCkgewogIHN0YXRlLmNhdGVnb3J5ID0gY2F0OwogIGRvY3VtZW50LmdldEVs' +
+  'ZW1lbnRCeUlkKCd0YWItc29sYXInKS5jbGFzc0xpc3QudG9nZ2xlKCdhY3RpdmUnLCBjYXQgPT09ICdz' +
+  'b2xhcicpOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCd0YWItaHlkcm8nKS5jbGFzc0xpc3QudG9n' +
+  'Z2xlKCdhY3RpdmUnLCBjYXQgPT09ICdoeWRybycpOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdj' +
+  'b250ZW50LXNvbGFyJykuc3R5bGUuZGlzcGxheSA9IGNhdCA9PT0gJ3NvbGFyJyA/ICcnIDogJ25vbmUn' +
+  'OwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdjb250ZW50LWh5ZHJvJykuc3R5bGUuZGlzcGxheSA9' +
+  'IGNhdCA9PT0gJ2h5ZHJvJyA/ICcnIDogJ25vbmUnOwogIHJlbmRlckFsbCgpOwp9CgovLyDliIfmj5sg' +
+  'TDIg5a2Q5YiG6aCBKOaLm+aomS/muKzoqaYv5r2b5YqbL+a0veipoikKZnVuY3Rpb24gc3dpdGNoSHlk' +
+  'cm9TdWJ0YWIoa2V5KSB7CiAgc3RhdGUuaHlkcm9TdWJ0YWIgPSBrZXk7CiAgY29uc3QgbWFwID0geyBo' +
+  'eWRyb190ZW5kZXI6ICd0ZW5kZXInLCBoeWRyb190ZXN0OiAndGVzdCcsIGh5ZHJvX3BvdGVudGlhbDog' +
+  'J3BvdGVudGlhbCcsIGh5ZHJvX2lucXVpcnk6ICdpbnF1aXJ5JyB9OwogIE9iamVjdC5lbnRyaWVzKG1h' +
+  'cCkuZm9yRWFjaCgoW2ssIHN1ZmZpeF0pID0+IHsKICAgIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdz' +
+  'dWJ0YWItJyArIHN1ZmZpeCkuY2xhc3NMaXN0LnRvZ2dsZSgnYWN0aXZlJywgayA9PT0ga2V5KTsKICAg' +
+  'IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdzdWItJyArIHN1ZmZpeCkuc3R5bGUuZGlzcGxheSA9IGsg' +
+  'PT09IGtleSA/ICcnIDogJ25vbmUnOwogIH0pOwogIHJlbmRlclNpdGVzKGtleSk7Cn0KCi8vIOmHjea4' +
+  'suafk+aJgOaciQpmdW5jdGlvbiByZW5kZXJBbGwoKSB7CiAgWydzb2xhcl9hZGRlbmR1bScsICdoeWRy' +
+  'b190ZW5kZXInLCAnaHlkcm9fdGVzdCcsICdoeWRyb19wb3RlbnRpYWwnLCAnaHlkcm9faW5xdWlyeSdd' +
+  'LmZvckVhY2gocmVuZGVyU2l0ZXMpOwogIHVwZGF0ZUNvdW50cygpOwp9CgpmdW5jdGlvbiB1cGRhdGVD' +
+  'b3VudHMoKSB7CiAgY29uc3Qgc29sYXJUb3RhbCA9IHN0YXRlLmRhdGEuc29sYXJfYWRkZW5kdW0uZmls' +
+  'dGVyKHMgPT4gIXMuX2RlbGV0ZWQpLmxlbmd0aDsKICBjb25zdCBoeWRyb1RvdGFsID0gc3RhdGUuZGF0' +
+  'YS5oeWRyb190ZW5kZXIuZmlsdGVyKHM9PiFzLl9kZWxldGVkKS5sZW5ndGggKyAKICAgICAgICAgICAg' +
+  'ICAgICAgICAgc3RhdGUuZGF0YS5oeWRyb190ZXN0LmZpbHRlcihzPT4hcy5fZGVsZXRlZCkubGVuZ3Ro' +
+  'ICsgCiAgICAgICAgICAgICAgICAgICAgIHN0YXRlLmRhdGEuaHlkcm9fcG90ZW50aWFsLmZpbHRlcihz' +
+  'PT4hcy5fZGVsZXRlZCkubGVuZ3RoICsgCiAgICAgICAgICAgICAgICAgICAgIHN0YXRlLmRhdGEuaHlk' +
+  'cm9faW5xdWlyeS5maWx0ZXIocz0+IXMuX2RlbGV0ZWQpLmxlbmd0aDsKICBkb2N1bWVudC5nZXRFbGVt' +
+  'ZW50QnlJZCgndGFiLXNvbGFyLWNvdW50JykudGV4dENvbnRlbnQgPSAnKCcgKyBzb2xhclRvdGFsICsg' +
+  'JyknOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCd0YWItaHlkcm8tY291bnQnKS50ZXh0Q29udGVu' +
+  'dCA9ICcoJyArIGh5ZHJvVG90YWwgKyAnKSc7CiAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3N1YnRh' +
+  'Yi10ZW5kZXItY291bnQnKS50ZXh0Q29udGVudCA9IHN0YXRlLmRhdGEuaHlkcm9fdGVuZGVyLmZpbHRl' +
+  'cihzPT4hcy5fZGVsZXRlZCkubGVuZ3RoOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdzdWJ0YWIt' +
+  'dGVzdC1jb3VudCcpLnRleHRDb250ZW50ID0gc3RhdGUuZGF0YS5oeWRyb190ZXN0LmZpbHRlcihzPT4h' +
+  'cy5fZGVsZXRlZCkubGVuZ3RoOwogIGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdzdWJ0YWItcG90ZW50' +
+  'aWFsLWNvdW50JykudGV4dENvbnRlbnQgPSBzdGF0ZS5kYXRhLmh5ZHJvX3BvdGVudGlhbC5maWx0ZXIo' +
+  'cz0+IXMuX2RlbGV0ZWQpLmxlbmd0aDsKICBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnc3VidGFiLWlu' +
+  'cXVpcnktY291bnQnKS50ZXh0Q29udGVudCA9IHN0YXRlLmRhdGEuaHlkcm9faW5xdWlyeS5maWx0ZXIo' +
+  'cz0+IXMuX2RlbGV0ZWQpLmxlbmd0aDsKfQoKLy8g57eo6Lyv5qyE5L2NCmZ1bmN0aW9uIHVwZGF0ZUZp' +
+  'ZWxkKGtleSwgaWQsIGZpZWxkLCB2YWx1ZSkgewogIGNvbnN0IGFyciA9IHN0YXRlLmRhdGFba2V5XTsK' +
+  'ICBjb25zdCBzID0gYXJyLmZpbmQoeCA9PiB4Ll9pZCA9PT0gaWQpOwogIGlmICghcykgcmV0dXJuOwog' +
+  'IC8vIOaVuOWtl+ashOS9jei9ieWeiwogIGlmIChbJ2NhcGFjaXR5X213JywgJ2NhcGFjaXR5X2t3Jywg' +
+  'J3NpdGVfY291bnQnLCAndW5pdF9jb3VudCcsICd1bml0X2NhcGFjaXR5X2t3JywgJ2VzdGltYXRlZF9j' +
+  'YXBhY2l0eV9rdyddLmluY2x1ZGVzKGZpZWxkKSkgewogICAgc1tmaWVsZF0gPSB2YWx1ZSA9PT0gJycg' +
+  'PyBudWxsIDogcGFyc2VGbG9hdCh2YWx1ZSk7CiAgfSBlbHNlIHsKICAgIHNbZmllbGRdID0gdmFsdWU7' +
+  'CiAgfQogIC8vIOabtOaWsOioiOaVuCjlj6/og73mlLnkuobliKrpmaTni4DmhYvku6XlpJbnmoQpCiAg' +
+  'dXBkYXRlQ291bnRzKCk7Cn0KCi8vIOWIh+aPm+WIqumZpOeLgOaFiwpmdW5jdGlvbiB0b2dnbGVEZWxl' +
+  'dGUoa2V5LCBpZCkgewogIGNvbnN0IGFyciA9IHN0YXRlLmRhdGFba2V5XTsKICBjb25zdCBpZHggPSBh' +
+  'cnIuZmluZEluZGV4KHggPT4geC5faWQgPT09IGlkKTsKICBpZiAoaWR4IDwgMCkgcmV0dXJuOwogIGNv' +
+  'bnN0IHMgPSBhcnJbaWR4XTsKICBpZiAocy5fbmV3KSB7CiAgICBhcnIuc3BsaWNlKGlkeCwgMSk7CiAg' +
+  'fSBlbHNlIHsKICAgIHMuX2RlbGV0ZWQgPSAhcy5fZGVsZXRlZDsKICB9CiAgcmVuZGVyU2l0ZXMoa2V5' +
+  'KTsKICB1cGRhdGVDb3VudHMoKTsKfQoKLy8gMTEg5YCL5a+p5p+l5qyE5L2N55qE5b+r6YCf5o+S5YWl' +
+  'CmZ1bmN0aW9uIGluc2VydFN5bWJvbChrZXksIGlkLCBmaWVsZCwgc3ltYm9sKSB7CiAgdXBkYXRlRmll' +
+  'bGQoa2V5LCBpZCwgZmllbGQsIHN5bWJvbCk7CiAgLy8g5pu05paw5bCN5oeJIHRleHRhcmVhCiAgY29u' +
+  'c3QgdGEgPSBkb2N1bWVudC5xdWVyeVNlbGVjdG9yKGB0ZXh0YXJlYVtkYXRhLWNhcmQ9IiR7aWR9Il1b' +
+  'ZGF0YS1maWVsZD0iJHtmaWVsZH0iXWApOwogIGlmICh0YSkgdGEudmFsdWUgPSBzeW1ib2w7CiAgLy8g' +
+  '6YeN5riy5p+T6YCZ5by15Y2hKGJhZGdlIOabtOaWsCkKICByZW5kZXJTaXRlcyhrZXkpOwp9CgovLyDm' +
+  'lrDlop7moYjloLQKZnVuY3Rpb24gYWRkU2l0ZShrZXkpIHsKICBjb25zdCB0ZW1wbGF0ZXMgPSB7CiAg' +
+  'ICBzb2xhcl9hZGRlbmR1bTogewogICAgICBjb250cmFjdF9uYW1lOiAnJywgc2l0ZV9wcm9ncmVzczog' +
+  'JycsIHZlbmRvcjogJycsIHNpdGVfbmFtZTogJycsIHNpdGVfY291bnQ6IG51bGwsCiAgICAgIGNhcGFj' +
+  'aXR5X213OiBudWxsLCBjdXJyZW50X3N0YWdlOiAnJywgc2lnbl9kYXRlOiAnJywgaW5zdGFsbF9kZWFk' +
+  'bGluZTogJycsCiAgICAgIGV4cGlyZV9zdGF0dXM6ICcnLCBjdXJyZW50X29wZXJhdGlvbjogJycsIGRp' +
+  'ZmZpY3VsdHk6ICcnLCB0ZWFtX3N1Z2dlc3Rpb246ICcnLCBub3RlOiAnJwogICAgfSwKICAgIGh5ZHJv' +
+  'X3RlbmRlcjogewogICAgICBjb3VudHk6ICcnLCB0b3duc2hpcDogJycsIGxhbmRfc2VjdGlvbjogJycs' +
+  'IGxhbmRfbm86ICcnLCBjb250cmFjdF9uYW1lOiAnJywgY2FzZV9uYW1lOiAnJywKICAgICAgY2FwYWNp' +
+  'dHlfa3c6IG51bGwsIHVuaXRfY291bnQ6IG51bGwsIHVuaXRfY2FwYWNpdHlfa3c6IG51bGwsCiAgICAg' +
+  'IHRlbmRlcl9wZXJpb2Q6ICcnLCBzaWduX2RhdGU6ICcnLAogICAgICBmZWVkZXI6ICcnLCBpbnRlcm5h' +
+  'bF9yZXZpZXc6ICcnLCB0YWlwb3dlcl9yZXZpZXc6ICcnLCB3YXRlcl9yaWdodDogJycsIHdhdGVyX3N0' +
+  'cnVjdHVyZTogJycsCiAgICAgIHNvaWxfY29uc2VydmF0aW9uOiAnJywgbGFuZF9wZXJtaXQ6ICcnLCBl' +
+  'bGVjdHJpY19zZXR1cDogJycsIGNvbnNlbnRfZmlsZWQ6ICcnLAogICAgICBicmllZmluZzogJycsIGNv' +
+  'bnN0cnVjdGlvbl9wZXJtaXQ6ICcnLAogICAgICBlc3RpbWF0ZWRfY29tcGxldGlvbjogJycsIHZlbmRv' +
+  'cjogJycsIG9wZXJhdGlvbjogJycsIGRpZmZpY3VsdHk6ICcnLCBwbGFubmVkX25leHQ6ICcnLCBub3Rl' +
+  'OiAnJwogICAgfSwKICAgIGh5ZHJvX3Rlc3Q6IHsKICAgICAgY291bnR5OiAnJywgdG93bnNoaXA6ICcn' +
+  'LCBsYW5kX3NlY3Rpb246ICcnLCBsYW5kX25vOiAnJywgY2hhbm5lbF9uYW1lOiAnJywKICAgICAgY2Fw' +
+  'YWNpdHlfa3c6IG51bGwsIHBpbGVfbm86ICcnLCB1bml0X2NvdW50OiBudWxsLCB1bml0X2NhcGFjaXR5' +
+  'X2t3OiBudWxsLAogICAgICB0ZXN0X2FwcGx5X2Zyb206ICcnLCB0ZXN0X2FwcGx5X3RvOiAnJywgc2ln' +
+  'bl9kYXRlOiAnJywKICAgICAgaW50ZXJuYWxfcmV2aWV3OiAnJywgYWN0dWFsX3Rlc3RfZGF0ZTogJycs' +
+  'IHZlbmRvcjogJycsIG9wZXJhdGlvbjogJycsCiAgICAgIHBsYW5uZWRfbmV4dDogJycsIG5vdGU6ICcn' +
+  'CiAgICB9LAogICAgaHlkcm9fcG90ZW50aWFsOiB7CiAgICAgIGNvdW50eTogJycsIHRvd25zaGlwOiAn' +
+  'JywgbGFuZF9zZWN0aW9uOiAnJywgbGFuZF9ubzogJycsIGNoYW5uZWxfbmFtZTogJycsCiAgICAgIHBp' +
+  'bGVfbm86ICcnLCBlc3RpbWF0ZWRfY2FwYWNpdHlfa3c6IG51bGwsIG5vdGU6ICcnLCBwcm9ncmVzczog' +
+  'JycsIHZlcnNpb25fdHlwZTogJycKICAgIH0sCiAgICBoeWRyb19pbnF1aXJ5OiB7CiAgICAgIGlucXVp' +
+  'cnlfZGF0ZTogJycsIGlucXVpcnlfdW5pdDogJycsIG5hbWU6ICcnLCBpbnF1aXJ5X21ldGhvZDogJycs' +
+  'IGlucXVpcnlfdHlwZTogJycsCiAgICAgIGlucXVpcnlfY29udGVudDogJycsIGhhbmRsaW5nX3N0YXR1' +
+  'czogJycsIGNsb3N1cmVfZGF0ZTogJycKICAgIH0KICB9OwogIAogIHN0YXRlLmRhdGFba2V5XS5wdXNo' +
+  'KHsKICAgIF9raW5kOiBrZXksIF9pZHg6IC0xLCBfaWQ6IG5leHROZXdJZCgpLCBfbmV3OiB0cnVlLCBf' +
+  'ZGVsZXRlZDogZmFsc2UsIF9vcmlnaW5hbDogJycsCiAgICBtZ210OiBzdGF0ZS5tZ210LAogICAgLi4u' +
+  'dGVtcGxhdGVzW2tleV0KICB9KTsKICByZW5kZXJTaXRlcyhrZXkpOwogIHVwZGF0ZUNvdW50cygpOwog' +
+  'IC8vIOa7vuWIsOaWsOahiOWgtAogIHNldFRpbWVvdXQoKCkgPT4gewogICAgY29uc3QgY2FyZHMgPSBk' +
+  'b2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCcjbGlzdC0nICsga2V5ICsgJyAuc2l0ZS1jYXJkJyk7CiAg' +
+  'ICBjb25zdCBsYXN0ID0gY2FyZHNbY2FyZHMubGVuZ3RoIC0gMV07CiAgICBpZiAobGFzdCkgbGFzdC5z' +
+  'Y3JvbGxJbnRvVmlldyh7IGJlaGF2aW9yOiAnc21vb3RoJywgYmxvY2s6ICdjZW50ZXInIH0pOwogIH0s' +
+  'IDUwKTsKfQoKLy8g6YCa55SoIHJlbmRlclNpdGVzIOWFpeWPowpmdW5jdGlvbiByZW5kZXJTaXRlcyhr' +
+  'ZXkpIHsKICBjb25zdCBjb250YWluZXIgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnbGlzdC0nICsg' +
+  'a2V5KTsKICBpZiAoIWNvbnRhaW5lcikgcmV0dXJuOwogIAogIGNvbnN0IHNlYXJjaElucHV0SWQgPSB7' +
+  'CiAgICBzb2xhcl9hZGRlbmR1bTogJ3NvbGFyLXNlYXJjaCcsCiAgICBoeWRyb190ZW5kZXI6ICd0ZW5k' +
+  'ZXItc2VhcmNoJywKICAgIGh5ZHJvX3Rlc3Q6ICd0ZXN0LXNlYXJjaCcsCiAgICBoeWRyb19wb3RlbnRp' +
+  'YWw6ICdwb3RlbnRpYWwtc2VhcmNoJywKICAgIGh5ZHJvX2lucXVpcnk6ICdpbnF1aXJ5LXNlYXJjaCcK' +
+  'ICB9W2tleV07CiAgY29uc3Qgc2VhcmNoID0gKGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKHNlYXJjaElu' +
+  'cHV0SWQpPy52YWx1ZSB8fCAnJykudG9Mb3dlckNhc2UoKTsKICAKICBsZXQgZmlsdGVyZWQgPSBzdGF0' +
+  'ZS5kYXRhW2tleV07CiAgaWYgKHNlYXJjaCkgewogICAgZmlsdGVyZWQgPSBmaWx0ZXJlZC5maWx0ZXIo' +
+  'cyA9PiB7CiAgICAgIC8vIOS4jeWQjOmhnuWeiyBzaGVldCDnlKjkuI3lkIzmrITkvY3mkJzlsIsKICAg' +
+  'ICAgY29uc3QgYmxvYiA9IFsKICAgICAgICBzLnNpdGVfbmFtZSwgcy5jYXNlX25hbWUsIHMuY2hhbm5l' +
+  'bF9uYW1lLCBzLmNvbnRyYWN0X25hbWUsIAogICAgICAgIHMudmVuZG9yLCBzLmlucXVpcnlfdW5pdCwg' +
+  'cy5pbnF1aXJ5X2NvbnRlbnQKICAgICAgXS5maWx0ZXIoQm9vbGVhbikuam9pbignICcpLnRvTG93ZXJD' +
+  'YXNlKCk7CiAgICAgIHJldHVybiBibG9iLmluY2x1ZGVzKHNlYXJjaCk7CiAgICB9KTsKICB9CiAgCiAg' +
+  'aWYgKGZpbHRlcmVkLmxlbmd0aCA9PT0gMCkgewogICAgY29udGFpbmVyLmlubmVySFRNTCA9ICc8ZGl2' +
+  'IGNsYXNzPSJlbXB0eSI+JyArIChzZWFyY2ggPyAn5rKS5pyJ56ym5ZCI5pCc5bCL55qE5qGI5aC0JyA6' +
+  'ICfmraTnrqHnkIbomZXnm67liY3mspLmnInos4fmlpks5Y+v6bue5LiK5pa544CMKyDmlrDlop7jgI3m' +
+  'jInpiJXmlrDlop4nKSArICc8L2Rpdj4nOwogICAgcmV0dXJuOwogIH0KICAKICBjb250YWluZXIuaW5u' +
+  'ZXJIVE1MID0gZmlsdGVyZWQubWFwKHMgPT4gcmVuZGVyQ2FyZChrZXksIHMpKS5qb2luKCcnKTsKfQoK' +
+  'Ly8g5L6dIGtleSDliIbmtL7liLDkuI3lkIznmoTljaHniYfmuLLmn5Plh73lvI8KZnVuY3Rpb24gcmVu' +
+  'ZGVyQ2FyZChrZXksIHMpIHsKICBsZXQgYmFkZ2UgPSAnJzsKICBpZiAocy5fbmV3KSBiYWRnZSA9ICc8' +
+  'c3BhbiBjbGFzcz0ic3RhdHVzLWJhZGdlIHN0YXR1cy1uZXciPisg5paw5aKePC9zcGFuPic7CiAgZWxz' +
+  'ZSBpZiAocy5fZGVsZXRlZCkgYmFkZ2UgPSAnPHNwYW4gY2xhc3M9InN0YXR1cy1iYWRnZSBzdGF0dXMt' +
+  'ZGVsZXRlZCI+5bey5Yiq6ZmkPC9zcGFuPic7CiAgZWxzZSBpZiAoaXNNb2RpZmllZChzKSkgYmFkZ2Ug' +
+  'PSAnPHNwYW4gY2xhc3M9InN0YXR1cy1iYWRnZSBzdGF0dXMtbW9kaWZpZWQiPuW3suS/ruaUuTwvc3Bh' +
+  'bj4nOwogIAogIGNvbnN0IHRpdGxlRmllbGQgPSB7CiAgICBzb2xhcl9hZGRlbmR1bTogcy5zaXRlX25h' +
+  'bWUgfHwgcy5jb250cmFjdF9uYW1lLAogICAgaHlkcm9fdGVuZGVyOiBzLmNhc2VfbmFtZSB8fCBzLmNv' +
+  'bnRyYWN0X25hbWUsCiAgICBoeWRyb190ZXN0OiBzLmNoYW5uZWxfbmFtZSwKICAgIGh5ZHJvX3BvdGVu' +
+  'dGlhbDogcy5jaGFubmVsX25hbWUsCiAgICBoeWRyb19pbnF1aXJ5OiBzLmlucXVpcnlfdW5pdAogIH1b' +
+  'a2V5XSB8fCAnKOWwmuacquWRveWQjSknOwogIAogIGNvbnN0IGNhcmRPcGVuID0gYDxkaXYgY2xhc3M9' +
+  'InNpdGUtY2FyZCAke3MuX25ldz8nbmV3JzonJ30ke3MuX2RlbGV0ZWQ/JyBkZWxldGVkJzonJ30iIGRh' +
+  'dGEtaWQ9IiR7cy5faWR9Ij4KICAgIDxkaXYgY2xhc3M9InNpdGUtY2FyZC1oZWFkZXIiPgogICAgICA8' +
+  'ZGl2IGNsYXNzPSJzaXRlLWNhcmQtdGl0bGUiPiR7aHRtbEVzY2FwZSh0aXRsZUZpZWxkKX0gJHtiYWRn' +
+  'ZX08L2Rpdj4KICAgICAgPGJ1dHRvbiBjbGFzcz0iYnRuLWRhbmdlciIgb25jbGljaz0idG9nZ2xlRGVs' +
+  'ZXRlKCcke2tleX0nLCAnJHtzLl9pZH0nKSI+JHtzLl9kZWxldGVkPyfihrog6YKE5Y6fJzon8J+XkSDl' +
+  'iKrpmaQnfTwvYnV0dG9uPgogICAgPC9kaXY+YDsKICBjb25zdCBjYXJkQ2xvc2UgPSBgPC9kaXY+YDsK' +
+  'ICAKICBpZiAocy5fZGVsZXRlZCkgcmV0dXJuIGNhcmRPcGVuICsgY2FyZENsb3NlOwogIAogIGxldCBi' +
+  'b2R5ID0gJyc7CiAgaWYgKGtleSA9PT0gJ3NvbGFyX2FkZGVuZHVtJykgICAgICBib2R5ID0gcmVuZGVy' +
+  'U29sYXJGaWVsZHMocyk7CiAgZWxzZSBpZiAoa2V5ID09PSAnaHlkcm9fdGVuZGVyJykgICBib2R5ID0g' +
+  'cmVuZGVyVGVuZGVyRmllbGRzKHMpOwogIGVsc2UgaWYgKGtleSA9PT0gJ2h5ZHJvX3Rlc3QnKSAgICAg' +
+  'Ym9keSA9IHJlbmRlclRlc3RGaWVsZHMocyk7CiAgZWxzZSBpZiAoa2V5ID09PSAnaHlkcm9fcG90ZW50' +
+  'aWFsJylib2R5ID0gcmVuZGVyUG90ZW50aWFsRmllbGRzKHMpOwogIGVsc2UgaWYgKGtleSA9PT0gJ2h5' +
+  'ZHJvX2lucXVpcnknKSAgYm9keSA9IHJlbmRlcklucXVpcnlGaWVsZHMocyk7CiAgCiAgcmV0dXJuIGNh' +
+  'cmRPcGVuICsgYm9keSArIGNhcmRDbG9zZTsKfQoKLy8gaGVscGVyOiDkuIDoiKzmloflrZfmrITkvY0K' +
+  'ZnVuY3Rpb24gaW5wKGtleSwgaWQsIGZpZWxkLCB2YWx1ZSwgdHlwZSkgewogIHR5cGUgPSB0eXBlIHx8' +
+  'ICd0ZXh0JzsKICByZXR1cm4gYDxpbnB1dCB0eXBlPSIke3R5cGV9IiB2YWx1ZT0iJHtodG1sRXNjYXBl' +
+  'KHZhbHVlKX0iIG9uaW5wdXQ9InVwZGF0ZUZpZWxkKCcke2tleX0nLCcke2lkfScsJyR7ZmllbGR9Jyx0' +
+  'aGlzLnZhbHVlKSI+YDsKfQpmdW5jdGlvbiB0YShrZXksIGlkLCBmaWVsZCwgdmFsdWUsIHJvd3MpIHsK' +
+  'ICByZXR1cm4gYDx0ZXh0YXJlYSByb3dzPSIke3Jvd3N8fDN9IiBvbmlucHV0PSJ1cGRhdGVGaWVsZCgn' +
+  'JHtrZXl9JywnJHtpZH0nLCcke2ZpZWxkfScsdGhpcy52YWx1ZSkiPiR7aHRtbEVzY2FwZSh2YWx1ZSl9' +
+  'PC90ZXh0YXJlYT5gOwp9CmZ1bmN0aW9uIHNlbChrZXksIGlkLCBmaWVsZCwgdmFsdWUsIG9wdGlvbnMp' +
+  'IHsKICByZXR1cm4gYDxzZWxlY3Qgb25jaGFuZ2U9InVwZGF0ZUZpZWxkKCcke2tleX0nLCcke2lkfScs' +
+  'JyR7ZmllbGR9Jyx0aGlzLnZhbHVlKSI+CiAgICA8b3B0aW9uIHZhbHVlPSIiPijoq4vpgbjmk4cpPC9v' +
+  'cHRpb24+CiAgICAke29wdGlvbnMubWFwKG8gPT4gYDxvcHRpb24gdmFsdWU9IiR7b30iJHt2YWx1ZT09' +
+  'PW8/JyBzZWxlY3RlZCc6Jyd9PiR7b308L29wdGlvbj5gKS5qb2luKCcnKX0KICA8L3NlbGVjdD5gOwp9' +
+  'CgovLyDlpKrpmb3lhYnpm7so6ZmE5Lu25LiAKQpmdW5jdGlvbiByZW5kZXJTb2xhckZpZWxkcyhzKSB7' +
+  'CiAgcmV0dXJuIGAKICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0xIj48ZGl2PgogICAgICA8bGFiZWw+' +
+  '5qGI5aC05ZCN56ixPHNwYW4gY2xhc3M9InJlcSI+Kjwvc3Bhbj48L2xhYmVsPgogICAgICAke2lucCgn' +
+  'c29sYXJfYWRkZW5kdW0nLCBzLl9pZCwgJ3NpdGVfbmFtZScsIHMuc2l0ZV9uYW1lKX0KICAgIDwvZGl2' +
+  'PjwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTIiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+' +
+  'CiAgICAgIDxkaXY+PGxhYmVsPuWlkee0hOWQjeeosTwvbGFiZWw+JHtpbnAoJ3NvbGFyX2FkZGVuZHVt' +
+  'Jywgcy5faWQsICdjb250cmFjdF9uYW1lJywgcy5jb250cmFjdF9uYW1lKX08L2Rpdj4KICAgICAgPGRp' +
+  'dj48bGFiZWw+6Kit572u5bug5ZWGPC9sYWJlbD4ke2lucCgnc29sYXJfYWRkZW5kdW0nLCBzLl9pZCwg' +
+  'J3ZlbmRvcicsIHMudmVuZG9yKX08L2Rpdj4KICAgIDwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBn' +
+  'cmlkLTMiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAgICAgIDxkaXY+PGxhYmVsPuahiOWgtOmAsuW6' +
+  'pjwvbGFiZWw+JHtzZWwoJ3NvbGFyX2FkZGVuZHVtJywgcy5faWQsICdzaXRlX3Byb2dyZXNzJywgcy5z' +
+  'aXRlX3Byb2dyZXNzLCBTT0xBUl9QUk9HUkVTU19PUFRJT05TKX08L2Rpdj4KICAgICAgPGRpdj48bGFi' +
+  'ZWw+55uu5YmN6ZqO5q61PC9sYWJlbD4ke3NlbCgnc29sYXJfYWRkZW5kdW0nLCBzLl9pZCwgJ2N1cnJl' +
+  'bnRfc3RhZ2UnLCBzLmN1cnJlbnRfc3RhZ2UsIFNPTEFSX1NUQUdFX09QVElPTlMpfTwvZGl2PgogICAg' +
+  'ICA8ZGl2PjxsYWJlbD7oo53nva7lrrnph48oTVcpPC9sYWJlbD4ke2lucCgnc29sYXJfYWRkZW5kdW0n' +
+  'LCBzLl9pZCwgJ2NhcGFjaXR5X213Jywgcy5jYXBhY2l0eV9tdywgJ251bWJlcicpfTwvZGl2PgogICAg' +
+  'PC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJncmlkIGdyaWQtMyIgc3R5bGU9Im1hcmdpbi10b3A6OHB4Ij4K' +
+  'ICAgICAgPGRpdj48bGFiZWw+5qGI5aC05pW46YePPC9sYWJlbD4ke2lucCgnc29sYXJfYWRkZW5kdW0n' +
+  'LCBzLl9pZCwgJ3NpdGVfY291bnQnLCBzLnNpdGVfY291bnQsICdudW1iZXInKX08L2Rpdj4KICAgICAg' +
+  'PGRpdj48bGFiZWw+57C957SE5pel5pyfPC9sYWJlbD4ke2lucCgnc29sYXJfYWRkZW5kdW0nLCBzLl9p' +
+  'ZCwgJ3NpZ25fZGF0ZScsIHMuc2lnbl9kYXRlKX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+6Kit572u' +
+  '5pyf6ZmQPC9sYWJlbD4ke2lucCgnc29sYXJfYWRkZW5kdW0nLCBzLl9pZCwgJ2luc3RhbGxfZGVhZGxp' +
+  'bmUnLCBzLmluc3RhbGxfZGVhZGxpbmUpfTwvZGl2PgogICAgPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJt' +
+  'YWluLWZpZWxkIiBzdHlsZT0ibWFyZ2luLXRvcDo4cHgiPgogICAgICA8bGFiZWw+8J+TnSDnm67liY3o' +
+  'vqbnkIbmg4Xms4Eo5Li76KaB5pu05paw5qyE5L2NKTwvbGFiZWw+CiAgICAgICR7dGEoJ3NvbGFyX2Fk' +
+  'ZGVuZHVtJywgcy5faWQsICdjdXJyZW50X29wZXJhdGlvbicsIHMuY3VycmVudF9vcGVyYXRpb24sIDUp' +
+  'fQogICAgPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJncmlkIGdyaWQtMSIgc3R5bGU9Im1hcmdpbi10b3A6' +
+  'OHB4Ij4KICAgICAgPGRpdj48bGFiZWw+5Zuw6Zuj6bue6Kqq5piOPC9sYWJlbD4ke3RhKCdzb2xhcl9h' +
+  'ZGRlbmR1bScsIHMuX2lkLCAnZGlmZmljdWx0eScsIHMuZGlmZmljdWx0eSwgMil9PC9kaXY+CiAgICA8' +
+  'L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0yIiBzdHlsZT0ibWFyZ2luLXRvcDo4cHgiPgog' +
+  'ICAgICA8ZGl2PjxsYWJlbD7lsIjmoYjlnJjpmoromZXnkIblu7rorbA8L2xhYmVsPiR7dGEoJ3NvbGFy' +
+  'X2FkZGVuZHVtJywgcy5faWQsICd0ZWFtX3N1Z2dlc3Rpb24nLCBzLnRlYW1fc3VnZ2VzdGlvbiwgMil9' +
+  'PC9kaXY+CiAgICAgIDxkaXY+PGxhYmVsPuWCmeiouzwvbGFiZWw+JHt0YSgnc29sYXJfYWRkZW5kdW0n' +
+  'LCBzLl9pZCwgJ25vdGUnLCBzLm5vdGUsIDIpfTwvZGl2PgogICAgPC9kaXY+CiAgYDsKfQoKLy8g5oub' +
+  '5qiZ5qGICmZ1bmN0aW9uIHJlbmRlclRlbmRlckZpZWxkcyhzKSB7CiAgLy8gMTEg5YCL5a+p5p+l5qyE' +
+  '5L2NCiAgY29uc3QgcmV2aWV3QmxvY2tzID0gUkVWSUVXX0ZJRUxEUy5tYXAocmYgPT4gYAogICAgPGRp' +
+  'diBjbGFzcz0icmV2aWV3LWZpZWxkIj4KICAgICAgPGxhYmVsPiR7cmYubGFiZWx9PC9sYWJlbD4KICAg' +
+  'ICAgPHRleHRhcmVhIHJvd3M9IjIiIGRhdGEtY2FyZD0iJHtzLl9pZH0iIGRhdGEtZmllbGQ9IiR7cmYu' +
+  'a2V5fSIgCiAgICAgICAgb25pbnB1dD0idXBkYXRlRmllbGQoJ2h5ZHJvX3RlbmRlcicsJyR7cy5faWR9' +
+  'JywnJHtyZi5rZXl9Jyx0aGlzLnZhbHVlKSI+JHtodG1sRXNjYXBlKHNbcmYua2V5XXx8JycpfTwvdGV4' +
+  'dGFyZWE+CiAgICAgIDxkaXYgY2xhc3M9InF1aWNrLWJ1dHRvbnMiPgogICAgICAgIDxidXR0b24gdHlw' +
+  'ZT0iYnV0dG9uIiBvbmNsaWNrPSJpbnNlcnRTeW1ib2woJ2h5ZHJvX3RlbmRlcicsJyR7cy5faWR9Jywn' +
+  'JHtyZi5rZXl9Jywn4peLJykiPuKXiyDlt7LpgJrpgY48L2J1dHRvbj4KICAgICAgICA8YnV0dG9uIHR5' +
+  'cGU9ImJ1dHRvbiIgb25jbGljaz0iaW5zZXJ0U3ltYm9sKCdoeWRyb190ZW5kZXInLCcke3MuX2lkfScs' +
+  'JyR7cmYua2V5fScsJ1gnKSI+WCDmnKrovqY8L2J1dHRvbj4KICAgICAgICA8YnV0dG9uIHR5cGU9ImJ1' +
+  'dHRvbiIgb25jbGljaz0iaW5zZXJ0U3ltYm9sKCdoeWRyb190ZW5kZXInLCcke3MuX2lkfScsJyR7cmYu' +
+  'a2V5fScsJ86UJykiPs6UIOmAsuihjOS4rTwvYnV0dG9uPgogICAgICAgIDxidXR0b24gdHlwZT0iYnV0' +
+  'dG9uIiBvbmNsaWNrPSJpbnNlcnRTeW1ib2woJ2h5ZHJvX3RlbmRlcicsJyR7cy5faWR9JywnJHtyZi5r' +
+  'ZXl9JywnLScpIj4tIOS4jemBqeeUqDwvYnV0dG9uPgogICAgICA8L2Rpdj4KICAgIDwvZGl2PgogIGAp' +
+  'LmpvaW4oJycpOwogIAogIHJldHVybiBgCiAgICA8ZGl2IGNsYXNzPSJncmlkIGdyaWQtMSI+PGRpdj4K' +
+  'ICAgICAgPGxhYmVsPuahiOWQjTxzcGFuIGNsYXNzPSJyZXEiPio8L3NwYW4+PC9sYWJlbD4ke2lucCgn' +
+  'aHlkcm9fdGVuZGVyJywgcy5faWQsICdjYXNlX25hbWUnLCBzLmNhc2VfbmFtZSl9CiAgICA8L2Rpdj48' +
+  'L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0yIiBzdHlsZT0ibWFyZ2luLXRvcDo4cHgiPgog' +
+  'ICAgICA8ZGl2PjxsYWJlbD7lpZHntITlkI3nqLE8L2xhYmVsPiR7aW5wKCdoeWRyb190ZW5kZXInLCBz' +
+  'Ll9pZCwgJ2NvbnRyYWN0X25hbWUnLCBzLmNvbnRyYWN0X25hbWUpfTwvZGl2PgogICAgICA8ZGl2Pjxs' +
+  'YWJlbD7lu6DllYY8L2xhYmVsPiR7aW5wKCdoeWRyb190ZW5kZXInLCBzLl9pZCwgJ3ZlbmRvcicsIHMu' +
+  'dmVuZG9yKX08L2Rpdj4KICAgIDwvZGl2PgogICAgCiAgICA8ZGl2IGNsYXNzPSJzdWJzZWN0aW9uLXRp' +
+  'dGxlIj7lnLDpu57os4foqIo8L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0yIj4KICAgICAg' +
+  'PGRpdj48bGFiZWw+57ij5biCPC9sYWJlbD4ke2lucCgnaHlkcm9fdGVuZGVyJywgcy5faWQsICdjb3Vu' +
+  'dHknLCBzLmNvdW50eSl9PC9kaXY+CiAgICAgIDxkaXY+PGxhYmVsPumEiemOruW4guWNgDwvbGFiZWw+' +
+  'JHtpbnAoJ2h5ZHJvX3RlbmRlcicsIHMuX2lkLCAndG93bnNoaXAnLCBzLnRvd25zaGlwKX08L2Rpdj4K' +
+  'ICAgIDwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTIiIHN0eWxlPSJtYXJnaW4tdG9wOjhw' +
+  'eCI+CiAgICAgIDxkaXY+PGxhYmVsPuWcsOautTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3RlbmRlcicsIHMu' +
+  'X2lkLCAnbGFuZF9zZWN0aW9uJywgcy5sYW5kX3NlY3Rpb24pfTwvZGl2PgogICAgICA8ZGl2PjxsYWJl' +
+  'bD7lnLDomZ88L2xhYmVsPiR7aW5wKCdoeWRyb190ZW5kZXInLCBzLl9pZCwgJ2xhbmRfbm8nLCBzLmxh' +
+  'bmRfbm8pfTwvZGl2PgogICAgPC9kaXY+CiAgICAKICAgIDxkaXYgY2xhc3M9InN1YnNlY3Rpb24tdGl0' +
+  'bGUiPuioreWCmeimj+agvDwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTMiPgogICAgICA8' +
+  'ZGl2PjxsYWJlbD7oo53nva7lrrnph48oa1cpPC9sYWJlbD4ke2lucCgnaHlkcm9fdGVuZGVyJywgcy5f' +
+  'aWQsICdjYXBhY2l0eV9rdycsIHMuY2FwYWNpdHlfa3csICdudW1iZXInKX08L2Rpdj4KICAgICAgPGRp' +
+  'dj48bGFiZWw+5qmf57WE57i95pW46YePKOe1hCk8L2xhYmVsPiR7aW5wKCdoeWRyb190ZW5kZXInLCBz' +
+  'Ll9pZCwgJ3VuaXRfY291bnQnLCBzLnVuaXRfY291bnQsICdudW1iZXInKX08L2Rpdj4KICAgICAgPGRp' +
+  'dj48bGFiZWw+5q+P57WE5qmf57WE6KOd572u5a656YePKGtXKTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rl' +
+  'bmRlcicsIHMuX2lkLCAndW5pdF9jYXBhY2l0eV9rdycsIHMudW5pdF9jYXBhY2l0eV9rdywgJ251bWJl' +
+  'cicpfTwvZGl2PgogICAgPC9kaXY+CiAgICAKICAgIDxkaXYgY2xhc3M9InN1YnNlY3Rpb24tdGl0bGUi' +
+  'PuaZgueoizwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTMiPgogICAgICA8ZGl2PjxsYWJl' +
+  'bD7mi5vllYbmnJ/plpM8L2xhYmVsPiR7dGEoJ2h5ZHJvX3RlbmRlcicsIHMuX2lkLCAndGVuZGVyX3Bl' +
+  'cmlvZCcsIHMudGVuZGVyX3BlcmlvZCwgMil9PC9kaXY+CiAgICAgIDxkaXY+PGxhYmVsPuewvee0hOaX' +
+  'peacnzwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3RlbmRlcicsIHMuX2lkLCAnc2lnbl9kYXRlJywgcy5zaWdu' +
+  'X2RhdGUpfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7poJDoqIjlrozlt6Xml6XmnJ88L2xhYmVsPiR7' +
+  'aW5wKCdoeWRyb190ZW5kZXInLCBzLl9pZCwgJ2VzdGltYXRlZF9jb21wbGV0aW9uJywgcy5lc3RpbWF0' +
+  'ZWRfY29tcGxldGlvbil9PC9kaXY+CiAgICA8L2Rpdj4KICAgIAogICAgPGRpdiBjbGFzcz0ic3Vic2Vj' +
+  'dGlvbi10aXRsZSI+MTEg6aCF5a+p5p+l6YCy5bqmKOm7nuaMiemIleW/q+mAn+aPkuWFpSDil4sgLyBY' +
+  'IC8gzpQgLyAtIOaIluiHqueUsei8uOWFpSk8L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0y' +
+  'IiBzdHlsZT0iZ2FwOjE0cHgiPgogICAgICAke3Jldmlld0Jsb2Nrc30KICAgIDwvZGl2PgogICAgCiAg' +
+  'ICA8ZGl2IGNsYXNzPSJtYWluLWZpZWxkIiBzdHlsZT0ibWFyZ2luLXRvcDoxNHB4Ij4KICAgICAgPGxh' +
+  'YmVsPvCfk50g6L6m55CG5oOF5b2iKOS4u+imgeabtOaWsOashOS9jSk8L2xhYmVsPgogICAgICAke3Rh' +
+  'KCdoeWRyb190ZW5kZXInLCBzLl9pZCwgJ29wZXJhdGlvbicsIHMub3BlcmF0aW9uLCA1KX0KICAgIDwv' +
+  'ZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTIiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAg' +
+  'ICAgIDxkaXY+PGxhYmVsPumBremBh+WbsOmbo+S6i+mghTwvbGFiZWw+JHt0YSgnaHlkcm9fdGVuZGVy' +
+  'Jywgcy5faWQsICdkaWZmaWN1bHR5Jywgcy5kaWZmaWN1bHR5LCAyKX08L2Rpdj4KICAgICAgPGRpdj48' +
+  'bGFiZWw+6L+R5pyf6aCQ6KiI6KaP5YqD6L6m55CG5LqL6aCFPC9sYWJlbD4ke3RhKCdoeWRyb190ZW5k' +
+  'ZXInLCBzLl9pZCwgJ3BsYW5uZWRfbmV4dCcsIHMucGxhbm5lZF9uZXh0LCAyKX08L2Rpdj4KICAgIDwv' +
+  'ZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTEiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAg' +
+  'ICAgIDxkaXY+PGxhYmVsPuWCmeiouzwvbGFiZWw+JHt0YSgnaHlkcm9fdGVuZGVyJywgcy5faWQsICdu' +
+  'b3RlJywgcy5ub3RlLCAyKX08L2Rpdj4KICAgIDwvZGl2PgogIGA7Cn0KCi8vIOa4rOippuahiApmdW5j' +
+  'dGlvbiByZW5kZXJUZXN0RmllbGRzKHMpIHsKICByZXR1cm4gYAogICAgPGRpdiBjbGFzcz0iZ3JpZCBn' +
+  'cmlkLTEiPjxkaXY+CiAgICAgIDxsYWJlbD7lnLPot6/lkI3nqLE8c3BhbiBjbGFzcz0icmVxIj4qPC9z' +
+  'cGFuPjwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ2NoYW5uZWxfbmFtZScsIHMuY2hh' +
+  'bm5lbF9uYW1lKX0KICAgIDwvZGl2PjwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTIiIHN0' +
+  'eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAgICAgIDxkaXY+PGxhYmVsPuW7oOWVhjwvbGFiZWw+JHtpbnAo' +
+  'J2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3ZlbmRvcicsIHMudmVuZG9yKX08L2Rpdj4KICAgICAgPGRpdj48' +
+  'bGFiZWw+5qiB6JmfPC9sYWJlbD4ke2lucCgnaHlkcm9fdGVzdCcsIHMuX2lkLCAncGlsZV9ubycsIHMu' +
+  'cGlsZV9ubyl9PC9kaXY+CiAgICA8L2Rpdj4KICAgIAogICAgPGRpdiBjbGFzcz0ic3Vic2VjdGlvbi10' +
+  'aXRsZSI+5Zyw6buePC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJncmlkIGdyaWQtNCI+CiAgICAgIDxkaXY+' +
+  'PGxhYmVsPue4o+W4gjwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ2NvdW50eScsIHMu' +
+  'Y291bnR5KX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+6YSJ6Y6u5biC5Y2APC9sYWJlbD4ke2lucCgn' +
+  'aHlkcm9fdGVzdCcsIHMuX2lkLCAndG93bnNoaXAnLCBzLnRvd25zaGlwKX08L2Rpdj4KICAgICAgPGRp' +
+  'dj48bGFiZWw+5Zyw5q61PC9sYWJlbD4ke2lucCgnaHlkcm9fdGVzdCcsIHMuX2lkLCAnbGFuZF9zZWN0' +
+  'aW9uJywgcy5sYW5kX3NlY3Rpb24pfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7lnLDomZ88L2xhYmVs' +
+  'PiR7aW5wKCdoeWRyb190ZXN0Jywgcy5faWQsICdsYW5kX25vJywgcy5sYW5kX25vKX08L2Rpdj4KICAg' +
+  'IDwvZGl2PgogICAgCiAgICA8ZGl2IGNsYXNzPSJzdWJzZWN0aW9uLXRpdGxlIj7oqK3lgpk8L2Rpdj4K' +
+  'ICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0zIj4KICAgICAgPGRpdj48bGFiZWw+6KOd572u5a656YeP' +
+  'KGtXKTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ2NhcGFjaXR5X2t3Jywgcy5jYXBh' +
+  'Y2l0eV9rdywgJ251bWJlcicpfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7mqZ/ntYTnuL3mlbjph48o' +
+  '57WEKTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3VuaXRfY291bnQnLCBzLnVuaXRf' +
+  'Y291bnQsICdudW1iZXInKX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+5q+P57WE5qmf57WE6KOd572u' +
+  '5a656YePKGtXKTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3VuaXRfY2FwYWNpdHlf' +
+  'a3cnLCBzLnVuaXRfY2FwYWNpdHlfa3csICdudW1iZXInKX08L2Rpdj4KICAgIDwvZGl2PgogICAgCiAg' +
+  'ICA8ZGl2IGNsYXNzPSJzdWJzZWN0aW9uLXRpdGxlIj7mmYLnqIs8L2Rpdj4KICAgIDxkaXYgY2xhc3M9' +
+  'ImdyaWQgZ3JpZC00Ij4KICAgICAgPGRpdj48bGFiZWw+55Sz6KuL5ris6Kmm5pel5pyfLei1tzwvbGFi' +
+  'ZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3Rlc3RfYXBwbHlfZnJvbScsIHMudGVzdF9hcHBs' +
+  'eV9mcm9tKX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+55Sz6KuL5ris6Kmm5pel5pyfLei/hDwvbGFi' +
+  'ZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3Rlc3RfYXBwbHlfdG8nLCBzLnRlc3RfYXBwbHlf' +
+  'dG8pfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7nsL3ntITml6XmnJ88L2xhYmVsPiR7aW5wKCdoeWRy' +
+  'b190ZXN0Jywgcy5faWQsICdzaWduX2RhdGUnLCBzLnNpZ25fZGF0ZSl9PC9kaXY+CiAgICAgIDxkaXY+' +
+  'PGxhYmVsPuWvpumam+WujOaIkOa4rOippuaXpeacnzwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Rlc3QnLCBz' +
+  'Ll9pZCwgJ2FjdHVhbF90ZXN0X2RhdGUnLCBzLmFjdHVhbF90ZXN0X2RhdGUpfTwvZGl2PgogICAgPC9k' +
+  'aXY+CiAgICAKICAgIDxkaXYgY2xhc3M9InJldmlldy1maWVsZCIgc3R5bGU9Im1hcmdpbi10b3A6OHB4' +
+  'Ij4KICAgICAgPGxhYmVsPueuoeeQhuiZleWFp+mDqOWvqeafpSjmuKzoqaboqIjnlaspPC9sYWJlbD4K' +
+  'ICAgICAgPHRleHRhcmVhIHJvd3M9IjIiIGRhdGEtY2FyZD0iJHtzLl9pZH0iIGRhdGEtZmllbGQ9Imlu' +
+  'dGVybmFsX3JldmlldyIgCiAgICAgICAgb25pbnB1dD0idXBkYXRlRmllbGQoJ2h5ZHJvX3Rlc3QnLCck' +
+  'e3MuX2lkfScsJ2ludGVybmFsX3JldmlldycsdGhpcy52YWx1ZSkiPiR7aHRtbEVzY2FwZShzLmludGVy' +
+  'bmFsX3Jldmlld3x8JycpfTwvdGV4dGFyZWE+CiAgICAgIDxkaXYgY2xhc3M9InF1aWNrLWJ1dHRvbnMi' +
+  'PgogICAgICAgIDxidXR0b24gdHlwZT0iYnV0dG9uIiBvbmNsaWNrPSJpbnNlcnRTeW1ib2woJ2h5ZHJv' +
+  'X3Rlc3QnLCcke3MuX2lkfScsJ2ludGVybmFsX3JldmlldycsJ+KXiycpIj7il4sg5bey6YCa6YGOPC9i' +
+  'dXR0b24+CiAgICAgICAgPGJ1dHRvbiB0eXBlPSJidXR0b24iIG9uY2xpY2s9Imluc2VydFN5bWJvbCgn' +
+  'aHlkcm9fdGVzdCcsJyR7cy5faWR9JywnaW50ZXJuYWxfcmV2aWV3JywnWCcpIj5YIOacqui+pjwvYnV0' +
+  'dG9uPgogICAgICAgIDxidXR0b24gdHlwZT0iYnV0dG9uIiBvbmNsaWNrPSJpbnNlcnRTeW1ib2woJ2h5' +
+  'ZHJvX3Rlc3QnLCcke3MuX2lkfScsJ2ludGVybmFsX3JldmlldycsJ86UJykiPs6UIOmAsuihjOS4rTwv' +
+  'YnV0dG9uPgogICAgICAgIDxidXR0b24gdHlwZT0iYnV0dG9uIiBvbmNsaWNrPSJpbnNlcnRTeW1ib2wo' +
+  'J2h5ZHJvX3Rlc3QnLCcke3MuX2lkfScsJ2ludGVybmFsX3JldmlldycsJy0nKSI+LSDkuI3pgannlKg8' +
+  'L2J1dHRvbj4KICAgICAgPC9kaXY+CiAgICA8L2Rpdj4KICAgIAogICAgPGRpdiBjbGFzcz0ibWFpbi1m' +
+  'aWVsZCIgc3R5bGU9Im1hcmdpbi10b3A6OHB4Ij4KICAgICAgPGxhYmVsPvCfk50g6L6m55CG5oOF5b2i' +
+  'KOS4u+imgeabtOaWsOashOS9jSk8L2xhYmVsPgogICAgICAke3RhKCdoeWRyb190ZXN0Jywgcy5faWQs' +
+  'ICdvcGVyYXRpb24nLCBzLm9wZXJhdGlvbiwgNSl9CiAgICA8L2Rpdj4KICAgIDxkaXYgY2xhc3M9Imdy' +
+  'aWQgZ3JpZC0yIiBzdHlsZT0ibWFyZ2luLXRvcDo4cHgiPgogICAgICA8ZGl2PjxsYWJlbD7ov5HmnJ/p' +
+  'oJDoqIjopo/lioPovqbnkIbkuovpoIU8L2xhYmVsPiR7dGEoJ2h5ZHJvX3Rlc3QnLCBzLl9pZCwgJ3Bs' +
+  'YW5uZWRfbmV4dCcsIHMucGxhbm5lZF9uZXh0LCAyKX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+5YKZ' +
+  '6Ki7PC9sYWJlbD4ke3RhKCdoeWRyb190ZXN0Jywgcy5faWQsICdub3RlJywgcy5ub3RlLCAyKX08L2Rp' +
+  'dj4KICAgIDwvZGl2PgogIGA7Cn0KCi8vIOa9m+WKm+ahiOWgtApmdW5jdGlvbiByZW5kZXJQb3RlbnRp' +
+  'YWxGaWVsZHMocykgewogIHJldHVybiBgCiAgICA8ZGl2IGNsYXNzPSJncmlkIGdyaWQtMSI+PGRpdj4K' +
+  'ICAgICAgPGxhYmVsPuWcs+i3r+WQjeeosTxzcGFuIGNsYXNzPSJyZXEiPio8L3NwYW4+PC9sYWJlbD4k' +
+  'e2lucCgnaHlkcm9fcG90ZW50aWFsJywgcy5faWQsICdjaGFubmVsX25hbWUnLCBzLmNoYW5uZWxfbmFt' +
+  'ZSl9CiAgICA8L2Rpdj48L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC00IiBzdHlsZT0ibWFy' +
+  'Z2luLXRvcDo4cHgiPgogICAgICA8ZGl2PjxsYWJlbD7nuKPluII8L2xhYmVsPiR7aW5wKCdoeWRyb19w' +
+  'b3RlbnRpYWwnLCBzLl9pZCwgJ2NvdW50eScsIHMuY291bnR5KX08L2Rpdj4KICAgICAgPGRpdj48bGFi' +
+  'ZWw+6YSJ6Y6u5biC5Y2APC9sYWJlbD4ke2lucCgnaHlkcm9fcG90ZW50aWFsJywgcy5faWQsICd0b3du' +
+  'c2hpcCcsIHMudG93bnNoaXApfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7lnLDmrrU8L2xhYmVsPiR7' +
+  'aW5wKCdoeWRyb19wb3RlbnRpYWwnLCBzLl9pZCwgJ2xhbmRfc2VjdGlvbicsIHMubGFuZF9zZWN0aW9u' +
+  'KX08L2Rpdj4KICAgICAgPGRpdj48bGFiZWw+5Zyw6JmfPC9sYWJlbD4ke2lucCgnaHlkcm9fcG90ZW50' +
+  'aWFsJywgcy5faWQsICdsYW5kX25vJywgcy5sYW5kX25vKX08L2Rpdj4KICAgIDwvZGl2PgogICAgPGRp' +
+  'diBjbGFzcz0iZ3JpZCBncmlkLTMiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAgICAgIDxkaXY+PGxh' +
+  'YmVsPuaogeiZnzwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3BvdGVudGlhbCcsIHMuX2lkLCAncGlsZV9ubycs' +
+  'IHMucGlsZV9ubyl9PC9kaXY+CiAgICAgIDxkaXY+PGxhYmVsPumgkOS8sOioree9ruWuuemHjyhrVyk8' +
+  'L2xhYmVsPiR7aW5wKCdoeWRyb19wb3RlbnRpYWwnLCBzLl9pZCwgJ2VzdGltYXRlZF9jYXBhY2l0eV9r' +
+  'dycsIHMuZXN0aW1hdGVkX2NhcGFjaXR5X2t3LCAnbnVtYmVyJyl9PC9kaXY+CiAgICAgIDxkaXY+PGxh' +
+  'YmVsPueJiOacrOmhnuWeizwvbGFiZWw+JHtzZWwoJ2h5ZHJvX3BvdGVudGlhbCcsIHMuX2lkLCAndmVy' +
+  'c2lvbl90eXBlJywgcy52ZXJzaW9uX3R5cGUsIFsn5bCN5YWnLOWwmumcgOipleS8sCcsJ+WwjeWklidd' +
+  'KX08L2Rpdj4KICAgIDwvZGl2PgogICAgPGRpdiBjbGFzcz0iZ3JpZCBncmlkLTIiIHN0eWxlPSJtYXJn' +
+  'aW4tdG9wOjhweCI+CiAgICAgIDxkaXY+PGxhYmVsPumAsuW6pjwvbGFiZWw+JHtpbnAoJ2h5ZHJvX3Bv' +
+  'dGVudGlhbCcsIHMuX2lkLCAncHJvZ3Jlc3MnLCBzLnByb2dyZXNzKX08L2Rpdj4KICAgICAgPGRpdj48' +
+  'bGFiZWw+5YKZ6Ki7PC9sYWJlbD4ke3RhKCdoeWRyb19wb3RlbnRpYWwnLCBzLl9pZCwgJ25vdGUnLCBz' +
+  'Lm5vdGUsIDIpfTwvZGl2PgogICAgPC9kaXY+CiAgYDsKfQoKLy8g5rS96Kmi57SA6YyECmZ1bmN0aW9u' +
+  'IHJlbmRlcklucXVpcnlGaWVsZHMocykgewogIHJldHVybiBgCiAgICA8ZGl2IGNsYXNzPSJncmlkIGdy' +
+  'aWQtMyI+PGRpdj4KICAgICAgPGxhYmVsPua0veipouaXpeacnzxzcGFuIGNsYXNzPSJyZXEiPio8L3Nw' +
+  'YW4+PC9sYWJlbD4ke2lucCgnaHlkcm9faW5xdWlyeScsIHMuX2lkLCAnaW5xdWlyeV9kYXRlJywgcy5p' +
+  'bnF1aXJ5X2RhdGUpfQogICAgPC9kaXY+CiAgICA8ZGl2PjxsYWJlbD7ntZDmoYjml6XmnJ88L2xhYmVs' +
+  'PiR7aW5wKCdoeWRyb19pbnF1aXJ5Jywgcy5faWQsICdjbG9zdXJlX2RhdGUnLCBzLmNsb3N1cmVfZGF0' +
+  'ZSl9PC9kaXY+CiAgICA8ZGl2PjxsYWJlbD7poZ7lnos8L2xhYmVsPiR7c2VsKCdoeWRyb19pbnF1aXJ5' +
+  'Jywgcy5faWQsICdpbnF1aXJ5X3R5cGUnLCBzLmlucXVpcnlfdHlwZSwgSU5RVUlSWV9UWVBFUyl9PC9k' +
+  'aXY+CiAgICA8L2Rpdj4KICAgIDxkaXYgY2xhc3M9ImdyaWQgZ3JpZC0zIiBzdHlsZT0ibWFyZ2luLXRv' +
+  'cDo4cHgiPgogICAgICA8ZGl2PjxsYWJlbD7mtL3oqaLllq7kvY08L2xhYmVsPiR7aW5wKCdoeWRyb19p' +
+  'bnF1aXJ5Jywgcy5faWQsICdpbnF1aXJ5X3VuaXQnLCBzLmlucXVpcnlfdW5pdCl9PC9kaXY+CiAgICAg' +
+  'IDxkaXY+PGxhYmVsPuWnk+WQjTwvbGFiZWw+JHtpbnAoJ2h5ZHJvX2lucXVpcnknLCBzLl9pZCwgJ25h' +
+  'bWUnLCBzLm5hbWUpfTwvZGl2PgogICAgICA8ZGl2PjxsYWJlbD7mtL3oqaLmlrnlvI88L2xhYmVsPiR7' +
+  'c2VsKCdoeWRyb19pbnF1aXJ5Jywgcy5faWQsICdpbnF1aXJ5X21ldGhvZCcsIHMuaW5xdWlyeV9tZXRo' +
+  'b2QsIElOUVVJUllfTUVUSE9EUyl9PC9kaXY+CiAgICA8L2Rpdj4KICAgIDxkaXYgY2xhc3M9Im1haW4t' +
+  'ZmllbGQiIHN0eWxlPSJtYXJnaW4tdG9wOjhweCI+CiAgICAgIDxsYWJlbD7wn5OdIOa0veipouWFp+Wu' +
+  'uSjnsKHopoHoqqrmmI4pPC9sYWJlbD4KICAgICAgJHt0YSgnaHlkcm9faW5xdWlyeScsIHMuX2lkLCAn' +
+  'aW5xdWlyeV9jb250ZW50Jywgcy5pbnF1aXJ5X2NvbnRlbnQsIDMpfQogICAgPC9kaXY+CiAgICA8ZGl2' +
+  'IGNsYXNzPSJncmlkIGdyaWQtMSIgc3R5bGU9Im1hcmdpbi10b3A6OHB4Ij4KICAgICAgPGRpdj48bGFi' +
+  'ZWw+6JmV55CG5oOF5b2iPC9sYWJlbD4ke3RhKCdoeWRyb19pbnF1aXJ5Jywgcy5faWQsICdoYW5kbGlu' +
+  'Z19zdGF0dXMnLCBzLmhhbmRsaW5nX3N0YXR1cywgMyl9PC9kaXY+CiAgICA8L2Rpdj4KICBgOwp9Cgov' +
+  'LyDnorroqo3moYYKZnVuY3Rpb24gb25Db25maXJtQ2hhbmdlKCkgewogIGRvY3VtZW50LmdldEVsZW1l' +
+  'bnRCeUlkKCdzdWJtaXQtYnRuJykuZGlzYWJsZWQgPSAhZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ2Nv' +
+  'bmZpcm0tY2hlY2snKS5jaGVja2VkOwp9CgovLyDnm6Pogb3loavloLHkurogaW5wdXQKZG9jdW1lbnQu' +
+  'YWRkRXZlbnRMaXN0ZW5lcignaW5wdXQnLCBlID0+IHsKICBpZiAoZS50YXJnZXQuaWQgPT09ICdmaWxs' +
+  'ZXItbmFtZScpIHN0YXRlLmZpbGxlck5hbWUgPSBlLnRhcmdldC52YWx1ZTsKICBpZiAoZS50YXJnZXQu' +
+  'aWQgPT09ICdmaWxsZXItcGhvbmUnKSBzdGF0ZS5maWxsZXJQaG9uZSA9IGUudGFyZ2V0LnZhbHVlOwp9' +
+  'KTsKCi8vIOS4i+i8iSBFeGNlbApmdW5jdGlvbiBkb3dubG9hZEV4Y2VsKCkgewogIGlmICghc3RhdGUu' +
+  'bWdtdCkgeyBhbGVydCgn6KuL5YWI6YG45pOH566h55CG6JmVJyk7IHJldHVybjsgfQogIGlmICghc3Rh' +
+  'dGUuZmlsbGVyTmFtZS50cmltKCkpIHsgYWxlcnQoJ+iri+Whq+Wvq+Whq+WgseS6uuWnk+WQjScpOyBy' +
+  'ZXR1cm47IH0KICAKICBjb25zdCBub3cgPSBuZXcgRGF0ZSgpOwogIGNvbnN0IHRzU3RyID0gbm93Lmdl' +
+  'dEZ1bGxZZWFyKCkgKyAnLycgKyAKICAgIFN0cmluZyhub3cuZ2V0TW9udGgoKSsxKS5wYWRTdGFydCgy' +
+  'LCcwJykgKyAnLycgKyAKICAgIFN0cmluZyhub3cuZ2V0RGF0ZSgpKS5wYWRTdGFydCgyLCcwJykgKyAn' +
+  'ICcgKwogICAgU3RyaW5nKG5vdy5nZXRIb3VycygpKS5wYWRTdGFydCgyLCcwJykgKyAnOicgKwogICAg' +
+  'U3RyaW5nKG5vdy5nZXRNaW51dGVzKCkpLnBhZFN0YXJ0KDIsJzAnKTsKICAKICBjb25zdCB3YiA9IFhM' +
+  'U1gudXRpbHMuYm9va19uZXcoKTsKICAKICAvLyA9PT0gU2hlZXQgMDogTWV0YWRhdGEgPT09CiAgY29u' +
+  'c3QgbWV0YVJvd3MgPSBbCiAgICBbJ+aciOWgseWhq+WgsSAtIE1ldGFkYXRhKOacrOihqOeCuuezu+e1' +
+  'seWMr+WFpeeUqCzoq4vli7/miYvli5Xnt6jovK8pJ10sCiAgICBbXSwKICAgIFsn5qyE5L2NJywgJ+WF' +
+  'p+WuuSddLAogICAgWyfmnJ/liKUnLCBNRVRBREFUQS5wZXJpb2RdLAogICAgWyfnrqHnkIbomZUnLCBz' +
+  'dGF0ZS5tZ210XSwKICAgIFsn5aGr5aCx5Lq65aeT5ZCNJywgc3RhdGUuZmlsbGVyTmFtZV0sCiAgICBb' +
+  'J+iBr+e1oembu+ipsScsIHN0YXRlLmZpbGxlclBob25lXSwKICAgIFsn5aGr5aCx5pmC6ZaTJywgdHNT' +
+  'dHJdLAogICAgWyflv6vnhafml6XmnJ8nLCBNRVRBREFUQS5zbmFwc2hvdF9kYXRlXSwKICAgIFsn5b+r' +
+  '54Wn5L6G5rqQJywgTUVUQURBVEEuc25hcHNob3Rfc291cmNlXSwKICAgIFtdLAogICAgWyfos4fmlpnn' +
+  'tbHoqIgnLCAnJ10sCiAgICBbJ+WkqumZveWFiembuyjpmYTku7bkuIApJywgc3RhdGUuZGF0YS5zb2xh' +
+  'cl9hZGRlbmR1bS5maWx0ZXIocz0+IXMuX2RlbGV0ZWQpLmxlbmd0aF0sCiAgICBbJyAg5YW25Lit5paw' +
+  '5aKeJywgc3RhdGUuZGF0YS5zb2xhcl9hZGRlbmR1bS5maWx0ZXIocz0+cy5fbmV3JiYhcy5fZGVsZXRl' +
+  'ZCkubGVuZ3RoXSwKICAgIFsnICDlhbbkuK3mqJnoqJjliKrpmaQnLCBzdGF0ZS5kYXRhLnNvbGFyX2Fk' +
+  'ZGVuZHVtLmZpbHRlcihzPT5zLl9kZWxldGVkKS5sZW5ndGhdLAogICAgWyflsI/msLTlipst5oub5qiZ' +
+  '5qGIJywgc3RhdGUuZGF0YS5oeWRyb190ZW5kZXIuZmlsdGVyKHM9PiFzLl9kZWxldGVkKS5sZW5ndGhd' +
+  'LAogICAgWycgIOWFtuS4reaWsOWinicsIHN0YXRlLmRhdGEuaHlkcm9fdGVuZGVyLmZpbHRlcihzPT5z' +
+  'Ll9uZXcmJiFzLl9kZWxldGVkKS5sZW5ndGhdLAogICAgWycgIOWFtuS4reaomeiomOWIqumZpCcsIHN0' +
+  'YXRlLmRhdGEuaHlkcm9fdGVuZGVyLmZpbHRlcihzPT5zLl9kZWxldGVkKS5sZW5ndGhdLAogICAgWyfl' +
+  'sI/msLTlipst5ris6Kmm5qGIJywgc3RhdGUuZGF0YS5oeWRyb190ZXN0LmZpbHRlcihzPT4hcy5fZGVs' +
+  'ZXRlZCkubGVuZ3RoXSwKICAgIFsn5bCP5rC05YqbLea9m+WKm+ahiOWgtCcsIHN0YXRlLmRhdGEuaHlk' +
+  'cm9fcG90ZW50aWFsLmZpbHRlcihzPT4hcy5fZGVsZXRlZCkubGVuZ3RoXSwKICAgIFsn5bCP5rC05Yqb' +
+  'Lea0veipoue0gOmMhCcsIHN0YXRlLmRhdGEuaHlkcm9faW5xdWlyeS5maWx0ZXIocz0+IXMuX2RlbGV0' +
+  'ZWQpLmxlbmd0aF0KICBdOwogIGNvbnN0IHdzMCA9IFhMU1gudXRpbHMuYW9hX3RvX3NoZWV0KG1ldGFS' +
+  'b3dzKTsKICB3czBbJyFjb2xzJ10gPSBbeyB3Y2g6IDI4IH0sIHsgd2NoOiA2MCB9XTsKICBYTFNYLnV0' +
+  'aWxzLmJvb2tfYXBwZW5kX3NoZWV0KHdiLCB3czAsICdNZXRhZGF0YScpOwogIAogIC8vID09PSBTaGVl' +
+  'dCAxOiDlpKrpmb3lhYnpm7so6ZmE5Lu25LiAKT09PQogIGNvbnN0IHN0YXQgPSBzID0+IHMuX2RlbGV0' +
+  'ZWQgPyAn5bey5Yiq6ZmkJyA6IChzLl9uZXcgPyAn5paw5aKeJyA6IChpc01vZGlmaWVkKHMpID8gJ+S/' +
+  'ruaUuScgOiAn5q2j5bi4JykpOwogIAogIGNvbnN0IHNvbGFySGVhZGVyID0gWyfni4DmhYsnLCAn5qGI' +
+  '5aC0SUQnLCAn566h55CG6JmVJywgJ+Wlkee0hOWQjeeosScsICfmoYjloLTpgLLluqYnLCAn6Kit572u' +
+  '5bug5ZWGJywgJ+ahiOWgtOWQjeeosScsIAogICAgJ+ahiOWgtOaVuOmHjycsICfoo53nva7lrrnph48o' +
+  'TVcpJywgJ+ebruWJjemajuautScsICfnsL3ntITml6XmnJ8nLCAn6Kit572u5pyf6ZmQJywgJ+WIsOac' +
+  'n+eLgOaFiycsCiAgICAn55uu5YmN6L6m55CG5oOF5rOBJywgJ+WbsOmbo+m7nuiqquaYjicsICflsIjm' +
+  'oYjlnJjpmoromZXnkIblu7rorbAnLCAn5YKZ6Ki7J107CiAgY29uc3Qgc29sYXJSb3dzID0gW3NvbGFy' +
+  'SGVhZGVyXS5jb25jYXQoc3RhdGUuZGF0YS5zb2xhcl9hZGRlbmR1bS5tYXAocyA9PiBbCiAgICBzdGF0' +
+  'KHMpLCBzLl9pZCwgcy5tZ210fHwnJywgcy5jb250cmFjdF9uYW1lfHwnJywgcy5zaXRlX3Byb2dyZXNz' +
+  'fHwnJywgcy52ZW5kb3J8fCcnLCBzLnNpdGVfbmFtZXx8JycsCiAgICBzLnNpdGVfY291bnQ9PW51bGw/' +
+  'Jyc6cy5zaXRlX2NvdW50LCBzLmNhcGFjaXR5X213PT1udWxsPycnOnMuY2FwYWNpdHlfbXcsCiAgICBz' +
+  'LmN1cnJlbnRfc3RhZ2V8fCcnLCBzLnNpZ25fZGF0ZXx8JycsIHMuaW5zdGFsbF9kZWFkbGluZXx8Jycs' +
+  'IHMuZXhwaXJlX3N0YXR1c3x8JycsCiAgICBzLmN1cnJlbnRfb3BlcmF0aW9ufHwnJywgcy5kaWZmaWN1' +
+  'bHR5fHwnJywgcy50ZWFtX3N1Z2dlc3Rpb258fCcnLCBzLm5vdGV8fCcnCiAgXSkpOwogIGNvbnN0IHdz' +
+  'MSA9IFhMU1gudXRpbHMuYW9hX3RvX3NoZWV0KHNvbGFyUm93cyk7CiAgd3MxWychY29scyddID0gW3t3' +
+  'Y2g6OH0se3djaDoyMn0se3djaDo4fSx7d2NoOjMwfSx7d2NoOjE0fSx7d2NoOjIyfSx7d2NoOjMwfSx7' +
+  'd2NoOjh9LHt3Y2g6MTB9LAogICAge3djaDoxNn0se3djaDoxMn0se3djaDoxOH0se3djaDoxMH0se3dj' +
+  'aDo2MH0se3djaDozMH0se3djaDozMH0se3djaDoyMH1dOwogIFhMU1gudXRpbHMuYm9va19hcHBlbmRf' +
+  'c2hlZXQod2IsIHdzMSwgJ+WkqumZveWFiembuycpOwogIAogIC8vID09PSBTaGVldCAyOiDmi5vmqJnm' +
+  'oYggPT09CiAgY29uc3QgdGVuZGVySGVhZGVyID0gWyfni4DmhYsnLCfmoYjloLRJRCcsJ+euoeeQhuiZ' +
+  'lScsJ+e4o+W4gicsJ+mEiemOruW4guWNgCcsJ+WcsOautScsJ+WcsOiZnycsJ+Wlkee0hOWQjeeosScs' +
+  'J+ahiOWQjScsCiAgICAn6KOd572u5a656YePKGtXKScsJ+apn+e1hOe4veaVuOmHjycsJ+avj+e1hOap' +
+  'n+e1hOijnee9ruWuuemHjyhrVyknLCfmi5vllYbmnJ/plpMnLCfnsL3ntITml6XmnJ8nLAogICAgJ+ml' +
+  'i+e3muS/neeVmScsJ+euoeeQhuiZleWFp+mDqOWvqeafpScsJ+WPsOmbu+S9teiBr+WvqeafpScsJ+aw' +
+  'tOasiueUs+iriycsJ+awtOWIqeW7uumAoOeJqeeUs+iriycsJ+awtOS/neioiOeVq+eUs+iriycsCiAg' +
+  'ICAn5Zyf5Zyw5a656KixJywn6Zu75qWt57GM6KitJywn5ZCM5oSP5YKZ5qGIJywn6Kqq5piO5pyDJywn' +
+  '5pa95bel6Kix5Y+vJywKICAgICfpoJDoqIjlrozlt6Xml6XmnJ8nLCflu6DllYYnLCfovqbnkIbmg4Xl' +
+  'vaInLCfpga3pgYflm7Dpm6PkuovpoIUnLCfov5HmnJ/poJDoqIjopo/lioPovqbnkIbkuovpoIUnLCfl' +
+  'gpnoqLsnXTsKICBjb25zdCB0ZW5kZXJSb3dzID0gW3RlbmRlckhlYWRlcl0uY29uY2F0KHN0YXRlLmRh' +
+  'dGEuaHlkcm9fdGVuZGVyLm1hcChzID0+IFsKICAgIHN0YXQocyksIHMuX2lkLCBzLm1nbXR8fCcnLCBz' +
+  'LmNvdW50eXx8JycsIHMudG93bnNoaXB8fCcnLCBzLmxhbmRfc2VjdGlvbnx8JycsIHMubGFuZF9ub3x8' +
+  'JycsCiAgICBzLmNvbnRyYWN0X25hbWV8fCcnLCBzLmNhc2VfbmFtZXx8JycsCiAgICBzLmNhcGFjaXR5' +
+  'X2t3PT1udWxsPycnOnMuY2FwYWNpdHlfa3csIHMudW5pdF9jb3VudD09bnVsbD8nJzpzLnVuaXRfY291' +
+  'bnQsIHMudW5pdF9jYXBhY2l0eV9rdz09bnVsbD8nJzpzLnVuaXRfY2FwYWNpdHlfa3csCiAgICBzLnRl' +
+  'bmRlcl9wZXJpb2R8fCcnLCBzLnNpZ25fZGF0ZXx8JycsCiAgICBzLmZlZWRlcnx8JycsIHMuaW50ZXJu' +
+  'YWxfcmV2aWV3fHwnJywgcy50YWlwb3dlcl9yZXZpZXd8fCcnLCBzLndhdGVyX3JpZ2h0fHwnJywgcy53' +
+  'YXRlcl9zdHJ1Y3R1cmV8fCcnLAogICAgcy5zb2lsX2NvbnNlcnZhdGlvbnx8JycsIHMubGFuZF9wZXJt' +
+  'aXR8fCcnLCBzLmVsZWN0cmljX3NldHVwfHwnJywgcy5jb25zZW50X2ZpbGVkfHwnJywgcy5icmllZmlu' +
+  'Z3x8JycsIHMuY29uc3RydWN0aW9uX3Blcm1pdHx8JycsCiAgICBzLmVzdGltYXRlZF9jb21wbGV0aW9u' +
+  'fHwnJywgcy52ZW5kb3J8fCcnLCBzLm9wZXJhdGlvbnx8JycsIHMuZGlmZmljdWx0eXx8JycsIHMucGxh' +
+  'bm5lZF9uZXh0fHwnJywgcy5ub3RlfHwnJwogIF0pKTsKICBjb25zdCB3czIgPSBYTFNYLnV0aWxzLmFv' +
+  'YV90b19zaGVldCh0ZW5kZXJSb3dzKTsKICB3czJbJyFjb2xzJ10gPSBBcnJheSh0ZW5kZXJIZWFkZXIu' +
+  'bGVuZ3RoKS5maWxsKHt3Y2g6MTR9KTsKICB3czJbJyFjb2xzJ11bMjddID0ge3djaDo2MH07IC8vIOi+' +
+  'pueQhuaDheW9ogogIFhMU1gudXRpbHMuYm9va19hcHBlbmRfc2hlZXQod2IsIHdzMiwgJ+aLm+aomeah' +
+  'iCcpOwogIAogIC8vID09PSBTaGVldCAzOiDmuKzoqabmoYggPT09CiAgY29uc3QgdGVzdEhlYWRlciA9' +
+  'IFsn54uA5oWLJywn5qGI5aC0SUQnLCfnrqHnkIbomZUnLCfnuKPluIInLCfphInpjq7luILljYAnLCfl' +
+  'nLDmrrUnLCflnLDomZ8nLCflnLPot6/lkI3nqLEnLAogICAgJ+ijnee9ruWuuemHjyhrVyknLCfmqIHo' +
+  'mZ8nLCfmqZ/ntYTnuL3mlbjph48nLCfmr4/ntYTmqZ/ntYToo53nva7lrrnph48oa1cpJywKICAgICfn' +
+  'lLPoq4vmuKzoqabml6XmnJ8t6LW3Jywn55Sz6KuL5ris6Kmm5pel5pyfLei/hCcsJ+ewvee0hOaXpeac' +
+  'nycsJ+euoeeQhuiZleWFp+mDqOWvqeafpScsJ+Wvpumam+WujOaIkOa4rOippuaXpeacnycsCiAgICAn' +
+  '5bug5ZWGJywn6L6m55CG5oOF5b2iJywn6L+R5pyf6aCQ6KiI6KaP5YqD6L6m55CG5LqL6aCFJywn5YKZ' +
+  '6Ki7J107CiAgY29uc3QgdGVzdFJvd3MgPSBbdGVzdEhlYWRlcl0uY29uY2F0KHN0YXRlLmRhdGEuaHlk' +
+  'cm9fdGVzdC5tYXAocyA9PiBbCiAgICBzdGF0KHMpLCBzLl9pZCwgcy5tZ210fHwnJywgcy5jb3VudHl8' +
+  'fCcnLCBzLnRvd25zaGlwfHwnJywgcy5sYW5kX3NlY3Rpb258fCcnLCBzLmxhbmRfbm98fCcnLAogICAg' +
+  'cy5jaGFubmVsX25hbWV8fCcnLAogICAgcy5jYXBhY2l0eV9rdz09bnVsbD8nJzpzLmNhcGFjaXR5X2t3' +
+  'LCBzLnBpbGVfbm98fCcnLCBzLnVuaXRfY291bnQ9PW51bGw/Jyc6cy51bml0X2NvdW50LCBzLnVuaXRf' +
+  'Y2FwYWNpdHlfa3c9PW51bGw/Jyc6cy51bml0X2NhcGFjaXR5X2t3LAogICAgcy50ZXN0X2FwcGx5X2Zy' +
+  'b218fCcnLCBzLnRlc3RfYXBwbHlfdG98fCcnLCBzLnNpZ25fZGF0ZXx8JycsIHMuaW50ZXJuYWxfcmV2' +
+  'aWV3fHwnJywgcy5hY3R1YWxfdGVzdF9kYXRlfHwnJywKICAgIHMudmVuZG9yfHwnJywgcy5vcGVyYXRp' +
+  'b258fCcnLCBzLnBsYW5uZWRfbmV4dHx8JycsIHMubm90ZXx8JycKICBdKSk7CiAgY29uc3Qgd3MzID0g' +
+  'WExTWC51dGlscy5hb2FfdG9fc2hlZXQodGVzdFJvd3MpOwogIHdzM1snIWNvbHMnXSA9IEFycmF5KHRl' +
+  'c3RIZWFkZXIubGVuZ3RoKS5maWxsKHt3Y2g6MTR9KTsKICB3czNbJyFjb2xzJ11bMThdID0ge3djaDo2' +
+  'MH07CiAgWExTWC51dGlscy5ib29rX2FwcGVuZF9zaGVldCh3Yiwgd3MzLCAn5ris6Kmm5qGIJyk7CiAg' +
+  'CiAgLy8gPT09IFNoZWV0IDQ6IOa9m+WKm+ahiOWgtCA9PT0KICBjb25zdCBwb3RIZWFkZXIgPSBbJ+eL' +
+  'gOaFiycsJ+ahiOWgtElEJywn566h55CG6JmVJywn57ij5biCJywn6YSJ6Y6u5biC5Y2AJywn5Zyw5q61' +
+  'Jywn5Zyw6JmfJywKICAgICflnLPot6/lkI3nqLEnLCfmqIHomZ8nLCfpoJDkvLDoqK3nva7lrrnph48o' +
+  'a1cpJywn5YKZ6Ki7Jywn6YCy5bqmJywn54mI5pys6aGe5Z6LJ107CiAgY29uc3QgcG90Um93cyA9IFtw' +
+  'b3RIZWFkZXJdLmNvbmNhdChzdGF0ZS5kYXRhLmh5ZHJvX3BvdGVudGlhbC5tYXAocyA9PiBbCiAgICBz' +
+  'dGF0KHMpLCBzLl9pZCwgcy5tZ210fHwnJywgcy5jb3VudHl8fCcnLCBzLnRvd25zaGlwfHwnJywgcy5s' +
+  'YW5kX3NlY3Rpb258fCcnLCBzLmxhbmRfbm98fCcnLAogICAgcy5jaGFubmVsX25hbWV8fCcnLCBzLnBp' +
+  'bGVfbm98fCcnLCBzLmVzdGltYXRlZF9jYXBhY2l0eV9rdz09bnVsbD8nJzpzLmVzdGltYXRlZF9jYXBh' +
+  'Y2l0eV9rdywKICAgIHMubm90ZXx8JycsIHMucHJvZ3Jlc3N8fCcnLCBzLnZlcnNpb25fdHlwZXx8JycK' +
+  'ICBdKSk7CiAgY29uc3Qgd3M0ID0gWExTWC51dGlscy5hb2FfdG9fc2hlZXQocG90Um93cyk7CiAgd3M0' +
+  'WychY29scyddID0gQXJyYXkocG90SGVhZGVyLmxlbmd0aCkuZmlsbCh7d2NoOjE0fSk7CiAgd3M0Wych' +
+  'Y29scyddWzEwXSA9IHt3Y2g6NDB9OwogIFhMU1gudXRpbHMuYm9va19hcHBlbmRfc2hlZXQod2IsIHdz' +
+  'NCwgJ+a9m+WKm+ahiOWgtCcpOwogIAogIC8vID09PSBTaGVldCA1OiDmtL3oqaLntIDpjIQgPT09CiAg' +
+  'Y29uc3QgaW5xSGVhZGVyID0gWyfni4DmhYsnLCfmoYjloLRJRCcsJ+euoeeQhuiZlScsJ+a0veipouaX' +
+  'peacnycsJ+a0veipouWWruS9jScsJ+Wnk+WQjScsJ+a0veipouaWueW8jycsCiAgICAn6aGe5Z6LJywn' +
+  '5rS96Kmi5YWn5a65Jywn6JmV55CG5oOF5b2iJywn57WQ5qGI5pel5pyfJ107CiAgY29uc3QgaW5xUm93' +
+  'cyA9IFtpbnFIZWFkZXJdLmNvbmNhdChzdGF0ZS5kYXRhLmh5ZHJvX2lucXVpcnkubWFwKHMgPT4gWwog' +
+  'ICAgc3RhdChzKSwgcy5faWQsIHMubWdtdHx8JycsIHMuaW5xdWlyeV9kYXRlfHwnJywgcy5pbnF1aXJ5' +
+  'X3VuaXR8fCcnLCBzLm5hbWV8fCcnLCBzLmlucXVpcnlfbWV0aG9kfHwnJywKICAgIHMuaW5xdWlyeV90' +
+  'eXBlfHwnJywgcy5pbnF1aXJ5X2NvbnRlbnR8fCcnLCBzLmhhbmRsaW5nX3N0YXR1c3x8JycsIHMuY2xv' +
+  'c3VyZV9kYXRlfHwnJwogIF0pKTsKICBjb25zdCB3czUgPSBYTFNYLnV0aWxzLmFvYV90b19zaGVldChp' +
+  'bnFSb3dzKTsKICB3czVbJyFjb2xzJ10gPSBBcnJheShpbnFIZWFkZXIubGVuZ3RoKS5maWxsKHt3Y2g6' +
+  'MTR9KTsKICB3czVbJyFjb2xzJ11bOF0gPSB7d2NoOjUwfTsKICB3czVbJyFjb2xzJ11bOV0gPSB7d2No' +
+  'OjUwfTsKICBYTFNYLnV0aWxzLmJvb2tfYXBwZW5kX3NoZWV0KHdiLCB3czUsICfmtL3oqaLntIDpjIQn' +
+  'KTsKICAKICAvLyDmqpTlkI0KICBjb25zdCBzYWZlRmlsbGVyID0gc3RhdGUuZmlsbGVyTmFtZS5yZXBs' +
+  'YWNlKC9bXFxcLzoqPyI8PnxdL2csICdfJykuc3Vic3RyaW5nKDAsIDIwKTsKICBjb25zdCBmaWxlbmFt' +
+  'ZSA9IE1FVEFEQVRBLnBlcmlvZCArICdfJyArIHN0YXRlLm1nbXQgKyAnXycgKyBzYWZlRmlsbGVyICsg' +
+  'J18nICsgCiAgICBub3cuZ2V0RnVsbFllYXIoKSArIFN0cmluZyhub3cuZ2V0TW9udGgoKSsxKS5wYWRT' +
+  'dGFydCgyLCcwJykgKyBTdHJpbmcobm93LmdldERhdGUoKSkucGFkU3RhcnQoMiwnMCcpICsgCiAgICBT' +
+  'dHJpbmcobm93LmdldEhvdXJzKCkpLnBhZFN0YXJ0KDIsJzAnKSArIFN0cmluZyhub3cuZ2V0TWludXRl' +
+  'cygpKS5wYWRTdGFydCgyLCcwJykgKyAnLnhsc3gnOwogIAogIFhMU1gud3JpdGVGaWxlKHdiLCBmaWxl' +
+  'bmFtZSk7CiAgCiAgYWxlcnQoJ+KchSDlt7LkuIvovIkgJyArIGZpbGVuYW1lICsgJ1xuXG4nICsKICAg' +
+  'ICflpKrpmb3lhYnpm7sgJyArIHN0YXRlLmRhdGEuc29sYXJfYWRkZW5kdW0uZmlsdGVyKHM9PiFzLl9k' +
+  'ZWxldGVkKS5sZW5ndGggKyAnIOahiFxuJyArCiAgICAn5bCP5rC05YqbLeaLm+aomeahiCAnICsgc3Rh' +
+  'dGUuZGF0YS5oeWRyb190ZW5kZXIuZmlsdGVyKHM9PiFzLl9kZWxldGVkKS5sZW5ndGggKyAnIOahiFxu' +
+  'JyArCiAgICAn5bCP5rC05YqbLea4rOippuahiCAnICsgc3RhdGUuZGF0YS5oeWRyb190ZXN0LmZpbHRl' +
+  'cihzPT4hcy5fZGVsZXRlZCkubGVuZ3RoICsgJyDmoYhcbicgKwogICAgJ+Wwj+awtOWKmy3mvZvlipvm' +
+  'oYjloLQgJyArIHN0YXRlLmRhdGEuaHlkcm9fcG90ZW50aWFsLmZpbHRlcihzPT4hcy5fZGVsZXRlZCku' +
+  'bGVuZ3RoICsgJyDmoYhcbicgKwogICAgJ+Wwj+awtOWKmy3mtL3oqaLntIDpjIQgJyArIHN0YXRlLmRh' +
+  'dGEuaHlkcm9faW5xdWlyeS5maWx0ZXIocz0+IXMuX2RlbGV0ZWQpLmxlbmd0aCArICcg5qGIXG5cbicg' +
+  'KwogICAgJ+iri+S+neePvuacieS9nOalrea1geeoiyzkuIrlgrPoh7PmjIflrprpm7Lnq6/os4fmlpnl' +
+  'pL7jgIInKTsKfQoKLy8g5Yid5aeL5YyWCmRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdtZ210LXNlbGVj' +
+  'dCcpLmZvY3VzKCk7Cjwvc2NyaXB0PgoKPC9ib2R5Pgo8L2h0bWw+Cg==';
+
+// 建立 filling.html 完整內容 — 階段 B:完整填報表單
+function buildFillingHtml(period, snapshot, metadata) {
+  // 民國年月轉中文
+  const yyy = Math.floor(parseInt(period) / 100);
+  const mm = parseInt(period) % 100;
+  const periodLabel = '民國 ' + yyy + ' 年 ' + mm + ' 月';
+  
+  // 解碼 template(用 TextDecoder 正確處理 UTF-8)
+  const bytes = Uint8Array.from(atob(FILLING_TEMPLATE_B64), c => c.charCodeAt(0));
+  let template = new TextDecoder('utf-8').decode(bytes);
+  
+  // 準備 placeholder 值
+  const replacements = {
+    '__PERIOD__': period,
+    '__PERIOD_LABEL__': periodLabel,
+    '__SNAPSHOT_DATE__': metadata.snapshot_date || '(未填)',
+    '__SNAPSHOT_SOURCE__': metadata.snapshot_source || '(未填)',
+    '__CREATED_AT__': metadata.created_at || '',
+    '__SNAPSHOT_JSON__': JSON.stringify(snapshot),
+    '__METADATA_JSON__': JSON.stringify(metadata),
+    // script tag 拆開,避免 dashboard 內的 HTML parser 把 main script 提早結束
+    '__SNAPSHOT_SCRIPT_TAG_OPEN__': '<' + 'script ',
+    '__SNAPSHOT_SCRIPT_TAG_CLOSE__': '<' + '/script>'
+  };
+  
+  // 套用 placeholder
+  for (const [key, val] of Object.entries(replacements)) {
+    template = template.split(key).join(val);
+  }
+  
+  return template;
+}
+
+
+
+
+// 填報基底資料狀態(顯示在開新月報專案 modal 內,讓你知道現在用什麼資料當基底)
+function tplFillingBaseStatus() {
+  if (!DATA_FILLING) {
+    return `
+      <div class="mt-4 p-3 rounded-lg" style="background:#fef3c7;border:1px solid #fde68a">
+        <p class="text-xs font-medium" style="color:#92400e">⚠️ 尚未匯入填報基底資料</p>
+        <p class="text-xs mt-1" style="color:#92400e">
+          請先點工具列「📥 匯入填報基底」按鈕,選擇 3 個基底 Excel(小水力盤點 + 太陽光電進度 + 太陽光電盤點),
+          系統會自動抽取 5 個 sheet(附件一/招標案/測試案/潛力案場/洽詢紀錄)作為各管理處填報的基底資料。
+        </p>
+      </div>
+    `;
+  }
+  
+  // 統計各管理處分布
+  const mgmtStats = {};
+  ['solar_addendum', 'hydro_tender', 'hydro_test', 'hydro_potential', 'hydro_inquiry'].forEach(key => {
+    (DATA_FILLING[key] || []).forEach(r => {
+      const m = r.mgmt || '(未填)';
+      if (!mgmtStats[m]) mgmtStats[m] = 0;
+      mgmtStats[m]++;
+    });
+  });
+  
+  const total = (DATA_FILLING.solar_addendum || []).length 
+              + (DATA_FILLING.hydro_tender || []).length 
+              + (DATA_FILLING.hydro_test || []).length
+              + (DATA_FILLING.hydro_potential || []).length 
+              + (DATA_FILLING.hydro_inquiry || []).length;
+  
+  const importedDate = DATA_FILLING.imported_at ? 
+    new Date(DATA_FILLING.imported_at).toLocaleString('zh-TW') : '(未知)';
+  
+  return `
+    <div class="mt-4 p-3 rounded-lg" style="background:#f0fdf4;border:1px solid #86efac">
+      <p class="text-xs font-medium mb-2" style="color:#15803d">✅ 填報基底資料狀態</p>
+      <p class="text-xs" style="color:#15803d">最後匯入時間:${importedDate}</p>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3 text-xs">
+        <div class="p-2 rounded" style="background:white">
+          <div style="color:#64748b">太陽光電</div>
+          <div class="font-bold" style="color:#f59e0b">${(DATA_FILLING.solar_addendum||[]).length} 案</div>
+        </div>
+        <div class="p-2 rounded" style="background:white">
+          <div style="color:#64748b">招標案</div>
+          <div class="font-bold" style="color:#0d9488">${(DATA_FILLING.hydro_tender||[]).length} 案</div>
+        </div>
+        <div class="p-2 rounded" style="background:white">
+          <div style="color:#64748b">測試案</div>
+          <div class="font-bold" style="color:#0d9488">${(DATA_FILLING.hydro_test||[]).length} 案</div>
+        </div>
+        <div class="p-2 rounded" style="background:white">
+          <div style="color:#64748b">潛力案場</div>
+          <div class="font-bold" style="color:#0d9488">${(DATA_FILLING.hydro_potential||[]).length} 案</div>
+        </div>
+        <div class="p-2 rounded" style="background:white">
+          <div style="color:#64748b">洽詢紀錄</div>
+          <div class="font-bold" style="color:#0d9488">${(DATA_FILLING.hydro_inquiry||[]).length} 案</div>
+        </div>
+      </div>
+      <p class="text-xs mt-2" style="color:#15803d">總計:${total} 筆,涵蓋 ${Object.keys(mgmtStats).length} 個管理處</p>
+    </div>
+  `;
+}
+
+// modal 模板
+function tplNewProjectModal() {
+  if (!state.newProjectModal) return '';
+  const defaultPeriod = defaultPeriodCode();
+  return `
+    <div class="modal-backdrop no-print" onclick="if(event.target===this)closeModal()">
+      <div class="modal-content" style="max-width:560px">
+        <div class="px-6 py-4 border-b flex items-center justify-between" style="border-color:var(--border)">
+          <div>
+            <h3 class="text-lg font-bold" style="color:#7c3aed">📋 開新月報專案</h3>
+            <p class="text-xs mt-1" style="color:var(--ink-soft)">產生 filling_XXXXX.html 給管理處填報用</p>
+          </div>
+          <button class="icon-btn" onclick="closeModal()">✕ 關閉</button>
+        </div>
+        <div class="p-6">
+          <label class="block text-sm font-medium mb-2">期別(民國年月,5 碼)</label>
+          <input id="np-period" type="text" inputmode="numeric" maxlength="5" pattern="\d{5}" 
+                 value="${defaultPeriod}" 
+                 style="width:100%;padding:10px 12px;border:2px solid #ddd6fe;border-radius:8px;font-size:18px;font-family:monospace;letter-spacing:0.1em">
+          <p class="text-xs mt-2" style="color:var(--ink-soft)">範例:11506 = 民國 115 年 6 月</p>
+          
+          ${tplFillingBaseStatus()}
+          
+          <div class="mt-4 p-3 rounded-lg" style="background:#f5f3ff;border:1px solid #ddd6fe">
+            <p class="text-xs font-medium mb-2" style="color:#6d28d9">📊 本次將打包的快照來源:</p>
+            <ul class="text-xs space-y-1" style="color:#5b21b6">
+              <li>· 太陽光電(附件一):${DATA_FILLING ? (DATA_FILLING.solar_addendum||[]).length : 0} 案</li>
+              <li>· 小水力-招標案:${DATA_FILLING ? (DATA_FILLING.hydro_tender||[]).length : 0} 案</li>
+              <li>· 小水力-測試案:${DATA_FILLING ? (DATA_FILLING.hydro_test||[]).length : 0} 案</li>
+              <li>· 小水力-潛力案場:${DATA_FILLING ? (DATA_FILLING.hydro_potential||[]).length : 0} 案</li>
+              <li>· 小水力-洽詢紀錄:${DATA_FILLING ? (DATA_FILLING.hydro_inquiry||[]).length : 0} 案</li>
+            </ul>
+          </div>
+          
+          <!-- 階段 B 已完成,移除舊提示 -->
+        </div>
+        <div class="px-6 py-4 border-t flex items-center justify-end gap-2" style="border-color:var(--border)">
+          <button class="icon-btn" onclick="closeModal()">取消</button>
+          <button class="icon-btn" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600" 
+                  onclick="generateFillingHtml()">📥 產生並下載</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 // 匯出輿情 JSON 給使用者下載(供上傳到 GitHub)
@@ -2549,6 +4182,8 @@ const state = {
   siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
   listModal: null,   // { title, subtitle, caseRefs:[], color }
   expandedSolarSec: { anomaly: false, vendor: false, target: false },
+  newProjectModal: false,   // 開新月報專案 modal
+  activeMonthPeriod: null,  // 收件狀態看板正在看的期別
   editor: null,        // { section: 'solar.completed_sites' | 'hydro.sites' | 'solar.mgmt' | ..., search: '' }
   editorRow: null,     // 編輯中的 row index (null = 新增, 數字 = 編輯)
   importPreview: null,
@@ -3675,6 +5310,21 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="exportDataForDeploy()" 
                     style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
                     title="匯出 data.json(供上傳到 GitHub 與他人同步)">☁️ 同步至雲端</button>
+            <button class="icon-btn no-print" onclick="state.newProjectModal = true; render();"
+                    style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600"
+                    title="開啟新的月報填報專案,生成 filling_XXXXX.html 供管理處填報">📋 開新月報專案</button>
+            <label class="icon-btn no-print" 
+                   style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer"
+                   title="一次選擇 3 個基底 Excel,系統自動抽取 5 個 sheet 作為填報基底資料">
+              📥 匯入填報基底
+              <input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
+            </label>
+            <label class="icon-btn no-print" 
+                   style="background:#dcfce7;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer"
+                   title="一次選擇多個從各管理處收到的填報 Excel,系統會自動歸位、更新收件狀態">
+              📤 匯入月報填報
+              <input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
+            </label>
             <label class="icon-btn no-print" style="cursor:pointer">📥 匯入<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
@@ -4452,16 +6102,17 @@ function deleteRow(idx) {
 // ==================== 編輯器 結束 ====================
 
 function closeModal() {
-  setState({ mgmtModal: null, vendorModal: null, siteModal: null, listModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null });
+  setState({ mgmtModal: null, vendorModal: null, siteModal: null, listModal: null, editor: null, editorRow: null, importPreview: null, importPreviewSelections: null, newProjectModal: false });
 }
 
 function printDashboard() {
   // 關閉 modal
-  if (state.mgmtModal !== null || state.vendorModal !== null || state.siteModal !== null || state.listModal !== null) {
+  if (state.mgmtModal !== null || state.vendorModal !== null || state.siteModal !== null || state.listModal !== null || state.newProjectModal) {
     state.mgmtModal = null;
     state.vendorModal = null;
     state.siteModal = null;
     state.listModal = null;
+    state.newProjectModal = false;
     render();
   }
   
@@ -4764,6 +6415,7 @@ function render() {
     <main class="max-w-7xl mx-auto px-6 py-6">
       ${tplOpinionSection()}
       ${state.tab === 'solar' ? tplSolarDashboard() : tplHydroDashboard()}
+      ${tplMonthProjectStatus()}
       ${tplChangelog()}
     </main>
     <footer class="max-w-7xl mx-auto px-6 py-8 mt-6 text-center text-xs" style="color:var(--ink-muted)">
@@ -4774,6 +6426,7 @@ function render() {
     ${state.vendorModal !== null ? tplVendorModal(state.vendorModal) : ''}
     ${state.siteModal !== null ? tplSiteDetailModal() : ''}
     ${state.listModal !== null ? tplListModal() : ''}
+    ${state.newProjectModal ? tplNewProjectModal() : ''}
     ${state.editor !== null ? tplEditorModal() : ''}
     ${state.importPreview ? tplImportPreviewModal() : ''}
     ${state.opinionEditor !== null ? tplOpinionEditorModal() : ''}
