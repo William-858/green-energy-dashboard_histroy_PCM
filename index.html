@@ -4803,7 +4803,7 @@ function tplSolarMgmtTable() {
   function mkCell(n, refs, label, mgmt, color, hoverBg) {
     if (n === 0) return '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     var safe = JSON.stringify(refs).replace(/"/g, '&quot;');
-    var onclick = 'openListModal(' + JSON.stringify(mgmt + '管理處・' + label) + ', ' + JSON.stringify('共 ' + n + ' 案') + ', ' + safe + ', \'var(--solar)\')';
+    var onclick = "openListModal('" + mgmt + "管理處・" + label + "', '共 " + n + " 案', " + safe + ", 'var(--solar)')";
     return '<td class="text-center tabular-nums" style="cursor:pointer;color:' + color + ';font-weight:600"'
       + ' onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="this.style.background=\'\'"'
       + ' onclick="' + onclick + '">' + n + '</td>';
@@ -4818,16 +4818,16 @@ function tplSolarMgmtTable() {
     var subtotalCell = subtotal > 0
       ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fef3c7"'
           + ' onmouseover="this.style.background=\'#fde68a\'" onmouseout="this.style.background=\'#fef3c7\'"'
-          + ' onclick="openListModal(' + JSON.stringify(m + '管理處・合計(不含規劃中)') + ', ' + JSON.stringify('共 ' + subtotal + ' 案') + ', ' + safeSubRefs + ', \'var(--solar)\')">'
+          + ' onclick="openListModal(\'' + m + "管理處・合計(不含規劃中)', '共 " + subtotal + " 案', " + safeSubRefs + ", 'var(--solar)')" + '">'
           + subtotal + '</td>')
       : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     var grandTotalCell = grandTotal > 0
       ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fde68a"'
           + ' onmouseover="this.style.background=\'#fbbf24\'" onmouseout="this.style.background=\'#fde68a\'"'
-          + ' onclick="openMgmtModal(' + JSON.stringify(m) + ')">' + grandTotal + '</td>')
+          + ' onclick="openMgmtModal(\'' + m + '\')">' + grandTotal + '</td>')
       : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     return '<tr>'
-      + '<td class="font-medium" style="cursor:pointer;color:var(--solar)" onclick="openMgmtModal(' + JSON.stringify(m) + ')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
+      + '<td class="font-medium" style="cursor:pointer;color:var(--solar)" onclick="openMgmtModal(\'' + m + '\')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
       + mkCell(s.operating.count, s.operating.refs, '營運階段', m, 'var(--solar)', '#fef3c7')
       + mkCell(s.construction.count, s.construction.refs, '施工階段', m, 'var(--solar)', '#fef3c7')
       + mkCell(s.admin.count, s.admin.refs, '申設階段', m, 'var(--solar)', '#fef3c7')
@@ -4885,9 +4885,10 @@ function tplHydroMgmtTable() {
   function mkCell(n, refs, label, mgmt) {
     if (n === 0) return '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     var safe = JSON.stringify(refs).replace(/"/g, '&quot;');
+    var onclick = "openListModal('" + mgmt + "管理處・" + label + "', '共 " + n + " 案', " + safe + ", 'var(--hydro)')";
     return '<td class="text-center tabular-nums" style="cursor:pointer;color:var(--hydro);font-weight:600"'
       + ' onmouseover="this.style.background=\'#ccfbf1\'" onmouseout="this.style.background=\'\'"'
-      + ' onclick="openListModal(' + JSON.stringify(mgmt + '管理處・' + label) + ', ' + JSON.stringify('共 ' + n + ' 案') + ', ' + safe + ', \'var(--hydro)\')">' + n + '</td>';
+      + ' onclick="' + onclick + '">' + n + '</td>';
   }
 
   var rows = mgmts.map(function(m) {
@@ -4899,16 +4900,16 @@ function tplHydroMgmtTable() {
     var subtotalCell = subtotal > 0
       ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#d1fae5"'
           + ' onmouseover="this.style.background=\'#a7f3d0\'" onmouseout="this.style.background=\'#d1fae5\'"'
-          + ' onclick="openListModal(' + JSON.stringify(m + '管理處・合計(不含潛力)') + ', ' + JSON.stringify('共 ' + subtotal + ' 案') + ', ' + safeSubRefs + ', \'var(--hydro)\')">'
+          + ' onclick="openListModal(\'' + m + "管理處・合計(不含潛力)', '共 " + subtotal + " 案', " + safeSubRefs + ", 'var(--hydro)')" + '">'
           + subtotal + '</td>')
       : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     var grandTotalCell = grandTotal > 0
       ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#a7f3d0"'
           + ' onmouseover="this.style.background=\'#6ee7b7\'" onmouseout="this.style.background=\'#a7f3d0\'"'
-          + ' onclick="openMgmtModal(' + JSON.stringify(m) + ')">' + grandTotal + '</td>')
+          + ' onclick="openMgmtModal(\'' + m + '\')">' + grandTotal + '</td>')
       : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
     return '<tr>'
-      + '<td class="font-medium" style="cursor:pointer;color:var(--hydro)" onclick="openMgmtModal(' + JSON.stringify(m) + ')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
+      + '<td class="font-medium" style="cursor:pointer;color:var(--hydro)" onclick="openMgmtModal(\'' + m + '\')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
       + mainSubs.map(function(sub) { return mkCell(s[sub].count, s[sub].refs, sub, m); }).join('')
       + subtotalCell
       + mkCell(s['潛力'].count, s['潛力'].refs, '潛力', m)
@@ -5831,7 +5832,7 @@ function renderCharts() {
     if (c2) chartInstances.year = new Chart(c2, {
       type: 'bar',
       data: { labels: ['112年','113年','114年'], datasets: [{ label: '解約容量 (MW)', data: [yearMap[112], yearMap[113], yearMap[114]], backgroundColor: '#dc2626', borderRadius: 4 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: Math.max(...mgmtA.map(m=>m.anomaly_cases), 1) + 1, ticks: { font: baseFont, stepSize: 1, precision: 0 } } } }
     });
     
     // 廠商解約分析條形圖(可點某廠商查看其所有解約案場)
@@ -5904,14 +5905,14 @@ function renderCharts() {
     const c1 = document.getElementById('chart-hydro-type');
     if (c1) chartInstances.hydroType = new Chart(c1, {
       type: 'bar',
-      data: { labels: typeData.map(t=>t[0]), datasets: [{ data: typeData.map(t=>t[1]), backgroundColor: '#dc2626', borderRadius: 4 }] },
+      data: { labels: typeData.map(t=>t[0]), datasets: [{ data: typeData.map(t=>t[1]), backgroundColor: '#dc2626', borderRadius: 4, maxBarThickness: 60 }] },
       options: { 
-        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: { 
           legend: { display: false },
           tooltip: { callbacks: { afterLabel: () => '(點擊查看清單)' } }
         }, 
-        scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } },
+        scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: Math.max(...typeData.map(t=>t[1])) + 1, ticks: { font: baseFont, stepSize: 1, precision: 0 } } },
         onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
         onClick: (e, els) => {
           if (!els || els.length === 0) return;
@@ -5927,8 +5928,8 @@ function renderCharts() {
     const c2 = document.getElementById('chart-hydro-mgmt-anomaly');
     if (c2) chartInstances.hydroMgmtAnomaly = new Chart(c2, {
       type: 'bar',
-      data: { labels: mgmtA.map(m=>m.name), datasets: [{ data: mgmtA.map(m=>m.anomaly_cases), backgroundColor: '#dc2626', borderRadius: 4 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { ticks: { font: baseFont } } } }
+      data: { labels: mgmtA.map(m=>m.name), datasets: [{ data: mgmtA.map(m=>m.anomaly_cases), backgroundColor: '#dc2626', borderRadius: 4, maxBarThickness: 60 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: Math.max(...mgmtA.map(m=>m.anomaly_cases), 1) + 1, ticks: { font: baseFont, stepSize: 1, precision: 0 } } } }
     });
     
     const mgmt = [...DATA.hydro.mgmt].sort((a,b)=>b.capacity_kw-a.capacity_kw);
