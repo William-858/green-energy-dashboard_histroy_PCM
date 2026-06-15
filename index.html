@@ -2973,18 +2973,129 @@ function importExcel(event) {
 }
 
 // 解析 Excel workbook → 結構化資料
+// === RiChi 格式解析 helper ===
+function _parseRiChiSolar(wb, result) {
+  const ws = wb.Sheets['太陽光電案場清單'];
+  if (!ws) return false;
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false });
+  if (aoa.length < 2) return false;
+  const STAGE_MAP = {
+    '已完工': 'solar.completed_sites', '施工中': 'solar.construction_sites',
+    '案場施工中下修': 'solar.construction_sites', '申設中': 'solar.admin_sites',
+    '規劃中': 'solar.planning_sites', '解約': 'solar.cancelled_sites', '撤案': 'solar.cancelled_sites'
+  };
+  const NUM_FIELDS = new Set(['cadastral_area_ha','usable_area_ha','capacity_mw','capacity_per_area',
+    'case_year','days_since_contract','canal_length_m','est_annual_gen_kwh','days_generating',
+    'est_cumulative_gen_kwh','provide_hh','carbon_reduction_est','canal_width_m','pv_height_m',
+    'water_level_area_m2','pv_panel_count','coverage_pct','cadastral_area_m2','usable_area_m2']);
+  const COLS = ['no','county','type','mgmt','renewable_type','land_no','case_year','name_old','name',
+    'cadastral_area_ha','usable_area_ha','area_ratio_check','capacity_mw','capacity_per_area',
+    'capacity_per_area_check','stage','completion_year','grid_date','facility_name','note',
+    'vendor','contract_start_date','days_since_contract','install_type','canal_length_m',
+    'related_villages','taipower_review_no','approval_no','taipower_trial_date','taipower_trial_no',
+    'equipment_reg_date','equipment_reg_no','est_annual_gen_kwh','grid_date_earliest',
+    'days_generating','est_cumulative_gen_kwh','work_zone_name','work_zone_short','sys_stage',
+    'project_name','usable_area_note','provide_hh','carbon_reduction_est','canal_width_m',
+    'pv_height_m','water_level_area_m2','pv_panel_count','coverage_pct','cadastral_area_m2','usable_area_m2'];
+  let count = 0;
+  for (let i = 1; i < aoa.length; i++) {
+    const r = aoa[i];
+    if (!r) continue;
+    const no = r[0];
+    if (!(typeof no === 'number' && Number.isInteger(no) && no > 0 && no < 10000)) continue;
+    const name = String(r[8] || '').trim();
+    if (!name) continue;
+    const stage = String(r[15] || '').trim();
+    const sec = STAGE_MAP[stage] || 'solar.planning_sites';
+    const obj = {};
+    COLS.forEach((k, ci) => {
+      let v = (ci < r.length && r[ci] != null) ? r[ci] : null;
+      if (v !== null && String(v).trim() === 'NULL') v = null;
+      if (v !== null && NUM_FIELDS.has(k)) { v = parseFloat(v) || 0; }
+      else if (v !== null && typeof v === 'string') v = v.trim();
+      obj[k] = v;
+    });
+    if (obj.mgmt) obj.mgmt = String(obj.mgmt).replace('管理處','').trim();
+    result.sections[sec].rows.push(obj);
+    count++;
+  }
+  return count > 0;
+}
+
+function _parseRiChiHydro(wb, result) {
+  const ws = wb.Sheets['小水力案場清單'];
+  if (!ws) return false;
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false });
+  if (aoa.length < 2) return false;
+  const SYSSTAGE_MAP = {
+    '營運中小水力案場': { substage: '營運中', stage: '已完工/已完成' },
+    '推動中案場': { substage: '推動中', stage: '推動中' },
+    '專案計畫示範案場': { substage: '專案示範', stage: '推動中' },
+    '測試案場': { substage: '測試', stage: '已完工/已完成' },
+    '潛力案場': { substage: '潛力', stage: '推動中' }
+  };
+  const COLS = ['no','mgmt','county','township','land_no','case_type','contract','name','capacity_kw',
+    'year','operation','vendor','operation2','note','sys_stage','p2p_stage',
+    'cadastral_area_m2','usable_area_m2','canal_width_m','water_head_m','flow_cms',
+    'water_facility','gen_method','turbine_type','unit_count','provide_hh'];
+  const ANOMALY_MAP = [
+    ['機組已拆除','機組已拆除','yellow'],['機組待拆除','機組待拆除','yellow'],
+    ['機組調整中','機組調整中','yellow'],['已終止契約','已終止契約','red'],
+    ['已撤案','已撤案','red'],['暫緩辦理','暫緩辦理','red'],['籌辦招標','暫緩辦理','red']
+  ];
+  const detectAnomaly = op => {
+    for (const [kw,type,level] of ANOMALY_MAP)
+      if (String(op||'').includes(kw)) return {is_anomaly:true,anomaly_type:type,anomaly_level:level};
+    return {is_anomaly:false,anomaly_type:'',anomaly_level:''};
+  };
+  let count = 0;
+  for (let i = 1; i < aoa.length; i++) {
+    const r = aoa[i];
+    if (!r) continue;
+    const no = r[0];
+    if (!(typeof no === 'number' && Number.isInteger(no) && no > 0 && no < 10000)) continue;
+    const name = String(r[7] || '').trim();
+    if (!name) continue;
+    const obj = {};
+    COLS.forEach((k, ci) => {
+      let v = (ci < r.length && r[ci] != null) ? r[ci] : null;
+      if (v !== null && typeof v === 'string') v = v.trim();
+      obj[k] = v;
+    });
+    if (obj.mgmt) obj.mgmt = String(obj.mgmt).replace('管理處','').trim();
+    obj.capacity_kw = parseFloat(obj.capacity_kw) || 0;
+    const meta = SYSSTAGE_MAP[obj.sys_stage] || {substage:'潛力',stage:'推動中'};
+    obj.substage = meta.substage;
+    obj.stage = meta.stage;
+    Object.assign(obj, detectAnomaly(obj.operation));
+    result.sections['hydro.sites'].rows.push(obj);
+    count++;
+  }
+  return count > 0;
+}
+
 function parseExcelWorkbook(wb) {
   const result = {
     sheetNames: wb.SheetNames,
     sections: {
       'solar.completed_sites': { label: '太陽光電 - 已完工案場', rows: [], warnings: [] },
-      'solar.construction_sites': { label: '太陽光電 - 施工中/待施工/停工中', rows: [], warnings: [] },
-      'solar.admin_sites': { label: '太陽光電 - 行政程序中', rows: [], warnings: [] },
-      'solar.planning_sites': { label: '太陽光電 - 規劃推動/招商中', rows: [], warnings: [] },
+      'solar.construction_sites': { label: '太陽光電 - 施工中/案場施工中下修', rows: [], warnings: [] },
+      'solar.admin_sites': { label: '太陽光電 - 申設中', rows: [], warnings: [] },
+      'solar.planning_sites': { label: '太陽光電 - 規劃中', rows: [], warnings: [] },
       'solar.cancelled_sites': { label: '太陽光電 - 解約/撤案', rows: [], warnings: [] },
-      'hydro.sites': { label: '小水力 - 案場(已完工 + 推動中)', rows: [], warnings: [] }
+      'hydro.sites': { label: '小水力 - 全部案場(92案)', rows: [], warnings: [] }
     }
   };
+
+  // === 格式自動偵測:RiChi 51欄/26欄 格式 ===
+  const isRiChiSolar = wb.SheetNames.includes('太陽光電案場清單');
+  const isRiChiHydro = wb.SheetNames.includes('小水力案場清單');
+  if (isRiChiSolar || isRiChiHydro) {
+    if (isRiChiSolar) _parseRiChiSolar(wb, result);
+    if (isRiChiHydro) _parseRiChiHydro(wb, result);
+    return result;
+  }
+  // === 舊版雙週報格式(以下為原有邏輯) ===
   
   // 尋找符合條件的分頁名
   const findSheet = (patterns) => {
@@ -4659,199 +4770,172 @@ function tplHydroCard(s) {
 // ===== 各管理處案場數總覽表(類似 Excel 格式)=====
 // 太陽光電:管理處 | 營運(已完工) | 施工 | 申設(行政) | 規劃推動 | 合計
 function tplSolarMgmtTable() {
-  // 14 個管理處(STANDARD_MGMTS 順序)+ 總計
-  const mgmts = STANDARD_MGMTS;  // ['桃園','石門','新竹',...]
-  
-  // 統計各管理處各階段案數
-  const stats = {};
-  mgmts.forEach(m => stats[m] = { 
-    operating: { count: 0, refs: [] },
-    construction: { count: 0, refs: [] },
-    admin: { count: 0, refs: [] },
-    planning: { count: 0, refs: [] }
+  var mgmts = STANDARD_MGMTS;
+  var stats = {};
+  mgmts.forEach(function(m) {
+    stats[m] = {
+      operating: { count: 0, refs: [] },
+      construction: { count: 0, refs: [] },
+      admin: { count: 0, refs: [] },
+      planning: { count: 0, refs: [] }
+    };
   });
-  
-  DATA.solar.completed_sites.forEach((s, i) => {
-    if (stats[s.mgmt]) {
-      stats[s.mgmt].operating.count++;
-      stats[s.mgmt].operating.refs.push('solar:completed_sites:' + i);
-    }
+  DATA.solar.completed_sites.forEach(function(s, i) {
+    if (stats[s.mgmt]) { stats[s.mgmt].operating.count++; stats[s.mgmt].operating.refs.push('solar:completed_sites:' + i); }
   });
-  DATA.solar.construction_sites.forEach((s, i) => {
-    if (stats[s.mgmt]) {
-      stats[s.mgmt].construction.count++;
-      stats[s.mgmt].construction.refs.push('solar:construction_sites:' + i);
-    }
+  DATA.solar.construction_sites.forEach(function(s, i) {
+    if (stats[s.mgmt]) { stats[s.mgmt].construction.count++; stats[s.mgmt].construction.refs.push('solar:construction_sites:' + i); }
   });
-  DATA.solar.admin_sites.forEach((s, i) => {
-    if (stats[s.mgmt]) {
-      stats[s.mgmt].admin.count++;
-      stats[s.mgmt].admin.refs.push('solar:admin_sites:' + i);
-    }
+  DATA.solar.admin_sites.forEach(function(s, i) {
+    if (stats[s.mgmt]) { stats[s.mgmt].admin.count++; stats[s.mgmt].admin.refs.push('solar:admin_sites:' + i); }
   });
-  DATA.solar.planning_sites.forEach((s, i) => {
-    if (stats[s.mgmt]) {
-      stats[s.mgmt].planning.count++;
-      stats[s.mgmt].planning.refs.push('solar:planning_sites:' + i);
-    }
+  DATA.solar.planning_sites.forEach(function(s, i) {
+    if (stats[s.mgmt]) { stats[s.mgmt].planning.count++; stats[s.mgmt].planning.refs.push('solar:planning_sites:' + i); }
   });
-  
-  // 容量總計
-  const totalCases = DATA.solar.completed_sites.length + DATA.solar.construction_sites.length 
-    + DATA.solar.admin_sites.length + DATA.solar.planning_sites.length;
-  const totalMw = (DATA.solar.summary.total_completed_mw || 0) 
-    + DATA.solar.construction_sites.reduce((a,s)=>a+(s.capacity_mw||0),0)
-    + DATA.solar.admin_sites.reduce((a,s)=>a+(s.capacity_mw||0),0)
-    + DATA.solar.planning_sites.reduce((a,s)=>a+(s.capacity_mw||0),0);
-  
-  // 各欄總計
-  const colTotals = {
-    operating: DATA.solar.completed_sites.length,
-    construction: DATA.solar.construction_sites.length,
-    admin: DATA.solar.admin_sites.length,
-    planning: DATA.solar.planning_sites.length
-  };
-  
-  // 每列 cell 工具:可點擊
-  function cell(n, refs, label, mgmt) {
-    if (n === 0) return `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
-    const safe = JSON.stringify(refs).replace(/"/g,'&quot;');
-    return `<td class="text-center tabular-nums" style="cursor:pointer;color:var(--solar);font-weight:600" 
-              title="點擊查看 ${n} 個案場" 
-              onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background=''"
-              onclick="openListModal('${mgmt}管理處・${label}', '共 ${n} 案', ${safe}, 'var(--solar)')">${n}</td>`;
+
+  var colOp = DATA.solar.completed_sites.length;
+  var colCn = DATA.solar.construction_sites.length;
+  var colAd = DATA.solar.admin_sites.length;
+  var colPl = DATA.solar.planning_sites.length;
+  var colSub = colOp + colCn + colAd;
+  var colGrand = colSub + colPl;
+
+  function mkCell(n, refs, label, mgmt, color, hoverBg) {
+    if (n === 0) return '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    var safe = JSON.stringify(refs).replace(/"/g, '&quot;');
+    var onclick = 'openListModal(' + JSON.stringify(mgmt + '管理處・' + label) + ', ' + JSON.stringify('共 ' + n + ' 案') + ', ' + safe + ', \'var(--solar)\')';
+    return '<td class="text-center tabular-nums" style="cursor:pointer;color:' + color + ';font-weight:600"'
+      + ' onmouseover="this.style.background=\'' + hoverBg + '\'" onmouseout="this.style.background=\'\'"'
+      + ' onclick="' + onclick + '">' + n + '</td>';
   }
-  
-  // 渲染各列
-  const rows = mgmts.map(m => {
-    const s = stats[m];
-    const total = s.operating.count + s.construction.count + s.admin.count + s.planning.count;
-    const allRefs = [...s.operating.refs, ...s.construction.refs, ...s.admin.refs, ...s.planning.refs];
-    const totalCell = total > 0 
-      ? `<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fef3c7" 
-           onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'"
-           onclick="openMgmtModal('${m}')">${total}</td>`
-      : `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
-    return `
-      <tr>
-        <td class="font-medium" style="cursor:pointer;color:var(--solar)" onclick="openMgmtModal('${m}')" title="點擊查看 ${m}管理處 完整資料">${m}</td>
-        ${cell(s.operating.count, s.operating.refs, '營運階段', m)}
-        ${cell(s.construction.count, s.construction.refs, '施工階段', m)}
-        ${cell(s.admin.count, s.admin.refs, '申設階段', m)}
-        ${cell(s.planning.count, s.planning.refs, '規劃中階段', m)}
-        ${totalCell}
-      </tr>`;
+
+  var rows = mgmts.map(function(m) {
+    var s = stats[m];
+    var subtotal = s.operating.count + s.construction.count + s.admin.count;
+    var grandTotal = subtotal + s.planning.count;
+    var subRefs = s.operating.refs.concat(s.construction.refs, s.admin.refs);
+    var safeSubRefs = JSON.stringify(subRefs).replace(/"/g, '&quot;');
+    var subtotalCell = subtotal > 0
+      ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fef3c7"'
+          + ' onmouseover="this.style.background=\'#fde68a\'" onmouseout="this.style.background=\'#fef3c7\'"'
+          + ' onclick="openListModal(' + JSON.stringify(m + '管理處・合計(不含規劃中)') + ', ' + JSON.stringify('共 ' + subtotal + ' 案') + ', ' + safeSubRefs + ', \'var(--solar)\')">'
+          + subtotal + '</td>')
+      : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    var grandTotalCell = grandTotal > 0
+      ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#fde68a"'
+          + ' onmouseover="this.style.background=\'#fbbf24\'" onmouseout="this.style.background=\'#fde68a\'"'
+          + ' onclick="openMgmtModal(' + JSON.stringify(m) + ')">' + grandTotal + '</td>')
+      : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    return '<tr>'
+      + '<td class="font-medium" style="cursor:pointer;color:var(--solar)" onclick="openMgmtModal(' + JSON.stringify(m) + ')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
+      + mkCell(s.operating.count, s.operating.refs, '營運階段', m, 'var(--solar)', '#fef3c7')
+      + mkCell(s.construction.count, s.construction.refs, '施工階段', m, 'var(--solar)', '#fef3c7')
+      + mkCell(s.admin.count, s.admin.refs, '申設階段', m, 'var(--solar)', '#fef3c7')
+      + subtotalCell
+      + mkCell(s.planning.count, s.planning.refs, '規劃中', m, '#94a3b8', '#f1f5f9')
+      + grandTotalCell
+      + '</tr>';
   }).join('');
-  
-  return `
-    <table class="w-full text-sm border-collapse mgmt-table">
-      <thead>
-        <tr style="background:#fef3c7">
-          <th class="px-3 py-2 border" style="border-color:var(--border);width:14%">管理處</th>
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">營運階段<div class="text-xs font-normal" style="color:var(--ink-soft)">已完工</div></th>
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">施工階段<div class="text-xs font-normal" style="color:var(--ink-soft)">施工/待施工/停工</div></th>
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">申設階段<div class="text-xs font-normal" style="color:var(--ink-soft)">行政程序</div></th>
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border)">規劃中階段<div class="text-xs font-normal" style="color:var(--ink-soft)">評估招商</div></th>
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#fde68a">合計</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr style="background:#fef3c7;font-weight:700">
-          <td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.operating}</td>
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.construction}</td>
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.admin}</td>
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals.planning}</td>
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#fde68a">${totalCases}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="text-xs mt-3" style="color:var(--ink-muted)">※ 點任一數字查看該案場列表;點管理處名稱查看完整資料;不含歷年解約撤案 ${DATA.solar.cancelled_sites.length} 案</p>
-  `;
+
+  return '<table class="w-full text-sm border-collapse mgmt-table">'
+    + '<thead><tr style="background:#fef3c7">'
+    + '<th class="px-3 py-2 border" style="border-color:var(--border);width:12%">管理處</th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border)">營運階段<div class="text-xs font-normal" style="color:var(--ink-soft)">已完工</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border)">施工階段<div class="text-xs font-normal" style="color:var(--ink-soft)">施工/待施工/停工</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border)">申設階段<div class="text-xs font-normal" style="color:var(--ink-soft)">行政程序</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#fde68a">合計<div class="text-xs font-normal" style="color:var(--ink-soft)">不含規劃中</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#f1f5f9;color:#64748b">規劃中<div class="text-xs font-normal">評估招商</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#fbbf24">總計</th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows
+    + '<tr style="background:#fef3c7;font-weight:700">'
+    + '<td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">' + colOp + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">' + colCn + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">' + colAd + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#fde68a">' + colSub + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#f1f5f9;color:#64748b">' + colPl + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#fbbf24">' + colGrand + '</td>'
+    + '</tr></tbody></table>'
+    + '<p class="text-xs mt-3" style="color:var(--ink-muted)">※ 合計＝營運+施工+申設；總計＝合計+規劃中；不含歷年解約撤案 ' + DATA.solar.cancelled_sites.length + ' 案</p>';
 }
 
 // 小水力:管理處 × 5 substage 分類
 function tplHydroMgmtTable() {
-  const mgmts = STANDARD_MGMTS;
-  const subcategories = ['營運中', '推動中', '專案示範', '測試', '潛力'];
-  
-  // 統計:stats[mgmt][substage] = { count, refs }
-  const stats = {};
-  mgmts.forEach(m => { 
-    stats[m] = {}; 
-    subcategories.forEach(sub => stats[m][sub] = { count: 0, refs: [] });
+  var mgmts = STANDARD_MGMTS;
+  var mainSubs = ['營運中', '推動中', '專案示範', '測試'];
+  var stats = {};
+  mgmts.forEach(function(m) {
+    stats[m] = {};
+    ['營運中','推動中','專案示範','測試','潛力'].forEach(function(sub) { stats[m][sub] = { count: 0, refs: [] }; });
   });
-  
-  DATA.hydro.sites.forEach((s, i) => {
+  DATA.hydro.sites.forEach(function(s, i) {
     if (stats[s.mgmt] && stats[s.mgmt][s.substage]) {
       stats[s.mgmt][s.substage].count++;
       stats[s.mgmt][s.substage].refs.push('hydro:sites:' + i);
     }
   });
-  
-  // 各欄總計
-  const colTotals = {};
-  subcategories.forEach(sub => {
-    colTotals[sub] = DATA.hydro.sites.filter(s => s.substage === sub).length;
+  var colTotals = {};
+  ['營運中','推動中','專案示範','測試','潛力'].forEach(function(sub) {
+    colTotals[sub] = DATA.hydro.sites.filter(function(s) { return s.substage === sub; }).length;
   });
-  
-  // 容量 / 案數
-  const totalCases = DATA.hydro.sites.length;
-  const totalKw = DATA.hydro.sites.reduce((a, s) => a + (s.capacity_kw || 0), 0);
-  
-  function cell(n, refs, label, mgmt) {
-    if (n === 0) return `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
-    const safe = JSON.stringify(refs).replace(/"/g,'&quot;');
-    return `<td class="text-center tabular-nums" style="cursor:pointer;color:var(--hydro);font-weight:600"
-              title="點擊查看 ${n} 個案場"
-              onmouseover="this.style.background='#ccfbf1'" onmouseout="this.style.background=''"
-              onclick="openListModal('${mgmt}管理處・${label}', '共 ${n} 案', ${safe}, 'var(--hydro)')">${n}</td>`;
-  }
-  
-  const rows = mgmts.map(m => {
-    const s = stats[m];
-    let total = 0;
-    let allRefs = [];
-    subcategories.forEach(sub => {
-      total += s[sub].count;
-      allRefs = allRefs.concat(s[sub].refs);
-    });
-    const totalCell = total > 0
-      ? `<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#d1fae5"
-           onmouseover="this.style.background='#a7f3d0'" onmouseout="this.style.background='#d1fae5'"
-           onclick="openMgmtModal('${m}')">${total}</td>`
-      : `<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>`;
-    return `
-      <tr>
-        <td class="font-medium" style="cursor:pointer;color:var(--hydro)" onclick="openMgmtModal('${m}')" title="點擊查看 ${m}管理處 完整資料">${m}</td>
-        ${subcategories.map(sub => cell(s[sub].count, s[sub].refs, sub, m)).join('')}
-        ${totalCell}
-      </tr>`;
-  }).join('');
-  
-  return `
-    <table class="w-full text-sm border-collapse mgmt-table">
-      <thead>
-        <tr style="background:#d1fae5">
-          <th class="px-3 py-2 border" style="border-color:var(--border);width:12%">管理處</th>
-          ${subcategories.map(sub => `<th class="px-3 py-2 border text-center" style="border-color:var(--border)">${sub}</th>`).join('')}
-          <th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#a7f3d0">合計</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr style="background:#d1fae5;font-weight:700">
-          <td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>
-          ${subcategories.map(sub => `<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">${colTotals[sub]}</td>`).join('')}
-          <td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#a7f3d0">${totalCases}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="text-xs mt-3" style="color:var(--ink-muted)">※ 點任一數字查看該案場列表;點管理處名稱查看完整資料;總計 ${totalCases} 案、${totalKw.toFixed(0)} kW(若需要 9 欄細分需匯入新版資料)</p>
-  `;
-}
+  var colSub = mainSubs.reduce(function(a, sub) { return a + colTotals[sub]; }, 0);
+  var colGrand = colSub + colTotals['潛力'];
 
+  function mkCell(n, refs, label, mgmt) {
+    if (n === 0) return '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    var safe = JSON.stringify(refs).replace(/"/g, '&quot;');
+    return '<td class="text-center tabular-nums" style="cursor:pointer;color:var(--hydro);font-weight:600"'
+      + ' onmouseover="this.style.background=\'#ccfbf1\'" onmouseout="this.style.background=\'\'"'
+      + ' onclick="openListModal(' + JSON.stringify(mgmt + '管理處・' + label) + ', ' + JSON.stringify('共 ' + n + ' 案') + ', ' + safe + ', \'var(--hydro)\')">' + n + '</td>';
+  }
+
+  var rows = mgmts.map(function(m) {
+    var s = stats[m];
+    var subtotal = mainSubs.reduce(function(a, sub) { return a + s[sub].count; }, 0);
+    var grandTotal = subtotal + s['潛力'].count;
+    var subRefs = mainSubs.reduce(function(a, sub) { return a.concat(s[sub].refs); }, []);
+    var safeSubRefs = JSON.stringify(subRefs).replace(/"/g, '&quot;');
+    var subtotalCell = subtotal > 0
+      ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#d1fae5"'
+          + ' onmouseover="this.style.background=\'#a7f3d0\'" onmouseout="this.style.background=\'#d1fae5\'"'
+          + ' onclick="openListModal(' + JSON.stringify(m + '管理處・合計(不含潛力)') + ', ' + JSON.stringify('共 ' + subtotal + ' 案') + ', ' + safeSubRefs + ', \'var(--hydro)\')">'
+          + subtotal + '</td>')
+      : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    var grandTotalCell = grandTotal > 0
+      ? ('<td class="text-center tabular-nums font-bold" style="cursor:pointer;background:#a7f3d0"'
+          + ' onmouseover="this.style.background=\'#6ee7b7\'" onmouseout="this.style.background=\'#a7f3d0\'"'
+          + ' onclick="openMgmtModal(' + JSON.stringify(m) + ')">' + grandTotal + '</td>')
+      : '<td class="text-center tabular-nums" style="color:var(--ink-muted)">0</td>';
+    return '<tr>'
+      + '<td class="font-medium" style="cursor:pointer;color:var(--hydro)" onclick="openMgmtModal(' + JSON.stringify(m) + ')" title="點擊查看 ' + m + '管理處 完整資料">' + m + '</td>'
+      + mainSubs.map(function(sub) { return mkCell(s[sub].count, s[sub].refs, sub, m); }).join('')
+      + subtotalCell
+      + mkCell(s['潛力'].count, s['潛力'].refs, '潛力', m)
+      + grandTotalCell
+      + '</tr>';
+  }).join('');
+
+  var totalKw = DATA.hydro.sites.filter(function(s) { return s.substage !== '潛力'; }).reduce(function(a, s) { return a + (s.capacity_kw || 0); }, 0);
+
+  return '<table class="w-full text-sm border-collapse mgmt-table">'
+    + '<thead><tr style="background:#d1fae5">'
+    + '<th class="px-3 py-2 border" style="border-color:var(--border);width:12%">管理處</th>'
+    + mainSubs.map(function(sub) { return '<th class="px-3 py-2 border text-center" style="border-color:var(--border)">' + sub + '</th>'; }).join('')
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#a7f3d0">合計<div class="text-xs font-normal" style="color:var(--ink-soft)">不含潛力</div></th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#f1f5f9;color:#64748b">潛力</th>'
+    + '<th class="px-3 py-2 border text-center" style="border-color:var(--border);background:#6ee7b7">總計</th>'
+    + '</tr></thead>'
+    + '<tbody>' + rows
+    + '<tr style="background:#d1fae5;font-weight:700">'
+    + '<td class="px-3 py-2 border" style="border-color:var(--border)">總計</td>'
+    + mainSubs.map(function(sub) { return '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border)">' + colTotals[sub] + '</td>'; }).join('')
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#a7f3d0">' + colSub + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#f1f5f9;color:#64748b">' + colTotals['潛力'] + '</td>'
+    + '<td class="px-3 py-2 border text-center tabular-nums" style="border-color:var(--border);background:#6ee7b7">' + colGrand + '</td>'
+    + '</tr></tbody></table>'
+    + '<p class="text-xs mt-3" style="color:var(--ink-muted)">※ 合計＝營運中+推動中+專案示範+測試；總計＝合計+潛力；合計容量 ' + totalKw.toFixed(0) + ' kW</p>';
+}
 function tplSolarDashboard() {
   const anomalies = getSolarAnomalies();
   const cancelled = DATA.solar.cancelled_sites;
@@ -5669,7 +5753,7 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
             <div class="flex items-center gap-2 rounded-xl p-1" style="background:#f1f5f9">
               <button class="tab-btn ${state.tab === 'solar' ? 'active-solar' : ''}" onclick="setState({tab:'solar'})">
-                ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${DATA.solar.summary.total_completed_cases + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length + DATA.solar.planning_sites.length} 案</span>
+                ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${DATA.solar.summary.total_completed_cases + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length} 案</span>
               </button>
               <button class="tab-btn ${state.tab === 'hydro' ? 'active-hydro' : ''}" onclick="setState({tab:'hydro'})">
                 ${ICON.drop}<span>小水力</span><span class="text-xs opacity-80">${DATA.hydro.sites.filter(s=>s.substage!=='潛力').length} 案</span>
