@@ -3541,19 +3541,56 @@ function applyImport() {
   const preview = state.importPreview;
   const sel = state.importPreviewSelections;
   if (!preview || !sel) return;
-  
+
   // 套用前先複製當前 DATA 作為「上一版」快照 (深拷貝)
   const snapshot = JSON.parse(JSON.stringify(DATA));
-  
+
+  // 技術欄位「訂死」清單 — 從 RiChi 基底匯入後,後續匯入不覆蓋這些欄位
+  const PROTECTED_FIELDS = [
+    'taipower_review_no','approval_no','taipower_trial_date','taipower_trial_no',
+    'equipment_reg_date','equipment_reg_no','est_annual_gen_kwh','grid_date_earliest',
+    'days_generating','est_cumulative_gen_kwh','grid_date',
+    'cadastral_area_ha','usable_area_ha','canal_length_m','canal_width_m',
+    'pv_height_m','water_level_area_m2','pv_panel_count','coverage_pct',
+    'cadastral_area_m2','usable_area_m2','provide_hh','carbon_reduction_est',
+    'related_villages','land_no','install_type','work_zone_name','work_zone_short',
+    'sys_stage','project_name','usable_area_note','renewable_type','facility_name',
+    'contract_start_date','days_since_contract','capacity_per_area','capacity_per_area_check',
+    'name_old','case_year'
+  ];
+  const PROTECTED_SECTIONS = new Set([
+    'solar.completed_sites','solar.construction_sites','solar.admin_sites',
+    'solar.planning_sites','solar.cancelled_sites'
+  ]);
+
   const applied = [];
   Object.keys(sel).forEach(key => {
     if (!sel[key]) return;
     const rows = preview.sections[key].rows;
     const [a, b] = key.split('.');
-    DATA[a][b] = rows;
+
+    if (PROTECTED_SECTIONS.has(key)) {
+      // 依「案場名稱」合併,保留技術欄位舊值
+      const existing = DATA[a][b];
+      const existingByName = {};
+      existing.forEach(s => { if (s.name) existingByName[s.name] = s; });
+      const merged = rows.map(newRow => {
+        const old = existingByName[newRow.name];
+        if (!old) return newRow;
+        const result = Object.assign({}, newRow);
+        PROTECTED_FIELDS.forEach(f => {
+          if (old[f] !== null && old[f] !== undefined && old[f] !== 0 && old[f] !== '') {
+            result[f] = old[f];
+          }
+        });
+        return result;
+      });
+      DATA[a][b] = merged;
+    } else {
+      DATA[a][b] = rows;
+    }
     applied.push(preview.sections[key].label + '(' + rows.length + ' 筆)');
   });
-  
   if (applied.length === 0) {
     alert('沒有選擇任何要匯入的區塊');
     return;
