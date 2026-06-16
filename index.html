@@ -3533,6 +3533,46 @@ function parseExcelWorkbook(wb) {
     result.sections['hydro.sites'].warnings.push('找不到小水力分頁(關鍵字:已完工 + 推動中,或清冊)');
   }
   
+  // ===== 7. 小水力潛力案場(獨立sheet) =====
+  // 雙週報管考格式：潛力案場放在獨立的「潛力案場」sheet
+  // 欄位：col0=序號, col1=管理處, col2=縣市, col3=鄉鎮, col4=地段,
+  //        col5=地號, col6=圳路名稱(即案場名稱), col7=樁號,
+  //        col8=預估容量kW, col9=備註/進度, col10=版本類型
+  const potentialSheet = wb.Sheets['潛力案場'];
+  if (potentialSheet) {
+    const arr = XLSX.utils.sheet_to_json(potentialSheet, { header: 1, defval: null, blankrows: false });
+    let potCount = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const r = arr[i];
+      if (!r) continue;
+      const no = r[0];
+      // 序號為正整數才是資料列
+      if (!(typeof no === 'number' && Number.isInteger(no) && no > 0 && no < 10000)) continue;
+      const name = String(r[6] || '').trim(); // 圳路名稱
+      if (!name) continue;
+      let mgmt = String(r[1] || '').trim().replace('管理處', '');
+      if (!mgmt) continue;
+      potCount++;
+      result.sections['hydro.sites'].rows.push({
+        mgmt: mgmt,
+        county: String(r[2] || '').trim(),
+        township: String(r[3] || '').trim(),
+        contract: '',
+        name: name,
+        capacity_kw: parseFloat(r[8]) || 0,
+        year: '',
+        operation: String(r[9] || '').trim(),
+        vendor: '',
+        note: String(r[9] || '').trim(),
+        stage: '推動中',
+        substage: '潛力',
+        is_anomaly: false,
+        anomaly_type: '',
+        anomaly_level: ''
+      });
+    }
+  }
+
   return result;
 }
 
