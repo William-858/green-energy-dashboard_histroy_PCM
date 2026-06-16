@@ -5224,14 +5224,14 @@ function tplSolarDashboard() {
             let caseRefs = [];
             if (s.name === '已完工') {
               caseRefs = DATA.solar.completed_sites.map((x,i) => 'solar:completed_sites:'+i);
-            } else if (s.name.includes('施工')) {
+            } else if (s.key === 'construction' || s.name.includes('施工')) {
               caseRefs = DATA.solar.construction_sites.map((x,i) => 'solar:construction_sites:'+i);
-            } else if (s.name === '完成招商-行政程序申設中') {
+            } else if (s.key === 'admin' || s.name === '申設中' || s.name === '完成招商-行政程序申設中') {
               caseRefs = DATA.solar.admin_sites.map((x,i) => 'solar:admin_sites:'+i);
-            } else if (s.name === '招商中-公證簽約前') {
-              caseRefs = [];  // 此階段目前無案場
-            } else if (s.name === '評估待招商') {
+            } else if (s.key === 'planning' || s.name === '規劃中' || s.name === '評估待招商') {
               caseRefs = DATA.solar.planning_sites.map((x,i) => 'solar:planning_sites:'+i);
+            } else if (s.name === '招商中-公證簽約前') {
+              caseRefs = [];
             }
             const onClickStr = caseRefs.length > 0 
               ? `openListModal('${s.name} 案場列表', '共 ${s.cases} 案、合計 ${s.mw.toFixed(2)} MW', ${JSON.stringify(caseRefs).replace(/"/g,'&quot;')}, '${s.color}')`
