@@ -5192,7 +5192,7 @@ function tplSolarDashboard() {
             const badgeColor = a._level === 'yellow' ? 'var(--warning)' : 'var(--alert)';
             return `
             <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${borderColor};background:${bgColor};cursor:pointer" 
-                 onclick="openSiteModal('solar:${a._kind}:${a._idx}')">
+                 onclick="openSiteModal('solar:${a._kind}:${a._idx}', true)">
               <div class="flex items-start justify-between gap-2 mb-2">
                 <div class="flex-1">
                   <p class="font-semibold text-sm">${a.name}</p>
@@ -5200,10 +5200,14 @@ function tplSolarDashboard() {
                 </div>
                 ${tplBadge(a._reason, badgeColor, a._level === 'yellow' ? '#fed7aa' : '#fee2e2')}
               </div>
-              <div class="flex items-center gap-3 text-xs mt-2 pt-2 border-t" style="border-color:${borderColor}">
+              <div class="flex items-center gap-3 text-xs mt-1 flex-wrap">
                 <span style="color:var(--ink-soft)">容量 <strong>${a.capacity_mw} MW</strong></span>
-                <span style="color:var(--ink-soft)">廠商 <strong>${a.vendor}</strong></span>
+                <span style="color:var(--ink-soft)">廠商 <strong>${a.vendor || '-'}</strong></span>
               </div>
+              <p class="text-xs mt-2 pt-2 border-t" style="color:${a._level==='yellow'?'#92400e':'#991b1b'};border-color:${borderColor}">
+                <strong>異常原因：</strong>${a._reason || a.note || '詳見辦理進度'}
+                ${a.progress ? ' — ' + String(a.progress).slice(0,60) + (a.progress.length>60?'…':'') : ''}
+              </p>
             </div>`;
           }).join('')}
         </div>
@@ -5572,7 +5576,7 @@ function tplHydroDashboard() {
         </h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${[...red, ...yellow].map(a => `
-            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'};background:${a.anomaly_level === 'red' ? '#fef2f2' : '#fff7ed'}" onclick="openSiteModal('hydro:sites:${a._idx}')">
+            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'};background:${a.anomaly_level === 'red' ? '#fef2f2' : '#fff7ed'}" onclick="openSiteModal('hydro:sites:${a._idx}', true)">
               <div class="flex items-start justify-between gap-2 mb-2">
                 <div class="flex-1">
                   <p class="font-semibold text-sm">${a.name}</p>
@@ -5584,8 +5588,8 @@ function tplHydroDashboard() {
                 <span style="color:var(--ink-soft)">容量 <strong>${a.capacity_kw} kW</strong></span>
                 <span style="color:var(--ink-soft)">類別 <strong>${a.substage}</strong></span>
               </div>
-              <p class="text-xs pt-2 border-t" style="color:var(--ink-soft);border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'}">
-                <strong style="color:var(--ink)">辦理情形：</strong>${a.operation}
+              <p class="text-xs pt-2 border-t" style="color:${a.anomaly_level==='red'?'#991b1b':'#92400e'};border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'}">
+                <strong>異常原因：${a.anomaly_type}</strong> — ${String(a.operation||'').slice(0,80)}${(a.operation||'').length>80?'…':''}
               </p>
               ${a.vendor ? `<p class="text-xs mt-1" style="color:var(--ink-muted)">廠商：${a.vendor.split('(')[0].trim()}</p>` : ''}
             </div>
@@ -6123,8 +6127,10 @@ function toggleSolarSec(key, forceOpen) {
   }
 }
 
-function openSiteModal(caseRef) {
-  setState({ siteModal: { caseRef }, mgmtModal: null, vendorModal: null, listModal: null });
+function openSiteModal(caseRef, keepList) {
+  // keepList=true 時保留 listModal 在背後，讓 detail 可以返回
+  const listSnapshot = keepList ? state.listModal : null;
+  setState({ siteModal: { caseRef, fromList: listSnapshot }, mgmtModal: null, vendorModal: null, listModal: null });
 }
 
 // 通用列表 Modal:顯示一群案場/管理處,點任一筆進對應的詳情
@@ -6195,7 +6201,7 @@ function tplListModal() {
     
     return `
       <div class="rounded-lg border p-3 mgmt-clickable" style="border-color:${borderColor};background:${bgColor};cursor:pointer"
-           onclick="openSiteModal('${ref}')">
+           onclick="openSiteModal('${ref}', true)">
         <div class="flex items-start justify-between gap-2 mb-1">
           <p class="font-semibold text-sm flex-1">${r.name || '(無名稱)'}</p>
           <span class="text-xs px-1.5 py-0.5 rounded shrink-0" style="background:rgba(0,0,0,0.06);color:var(--ink-soft)">${stageLabel}</span>
@@ -6264,7 +6270,10 @@ function tplSiteDetailModal() {
             <p class="text-xs font-medium uppercase mb-1" style="color:${accentColor};letter-spacing:0.1em">${typeLabel} · 案場深入查看</p>
             <h2 class="text-xl font-bold font-serif-tc">${siteName}</h2>
           </div>
-          <button class="icon-btn" onclick="closeModal()">✕ 關閉</button>
+          <div class="flex items-center gap-2 shrink-0 no-print">
+            ${state.siteModal?.fromList ? `<button class="icon-btn" onclick="setState({listModal: state.siteModal.fromList, siteModal: null})" style="font-size:12px;background:#f0f9ff;border-color:#bae6fd;color:#0369a1">← 返回清單</button>` : ''}
+            <button class="icon-btn" onclick="closeModal()">✕ 關閉</button>
+          </div>
         </div>
         <div class="p-6">
           ${tplCaseRefEmbed(caseRef)}
