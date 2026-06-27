@@ -5837,100 +5837,49 @@ function tplVendorModal(idx) {
 
 // ==================== Header & Footer ====================
 function tplHeader() {
+  const solarCount = DATA.solar.summary.total_completed_cases + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length;
+  const hydroCount = DATA.hydro.sites.filter(s=>s.substage!=='潛力').length;
   return `
     <header class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b" style="border-color:var(--border)">
-      <div class="hdr-inner max-w-7xl mx-auto px-6 py-4">
+
+      <!-- ===== 桌面版（手機隱藏） ===== -->
+      <div class="desktop-header max-w-7xl mx-auto px-6 py-4">
         <div class="flex items-start justify-between gap-4 flex-wrap">
-          <div class="hdr-title">
+          <div>
             <p class="text-xs font-medium uppercase mb-1" style="color:var(--ink-muted);letter-spacing:0.15em">農田水利署．水域型農業綠能</p>
             <h1 class="text-2xl font-bold tracking-tight font-serif-tc">管制考核儀表板</h1>
             <p class="text-xs mt-1" style="color:var(--ink-soft)">資料更新日期：${DATA.updated_at}（民國 115 年 5 月 14 日）</p>
           </div>
-          <!-- 桌面版按鈕列 -->
-          <div class="btn-group-full flex items-center gap-3 flex-wrap">
+          <div class="flex items-center gap-3 flex-wrap">
             <button class="icon-btn no-print" onclick="openEditor('solar.completed_sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e">✏️ 編輯資料</button>
-            <button class="icon-btn no-print" onclick="exportJSON()" title="匯出 DATA 為日期檔名(本機備份用)">💾 匯出 JSON</button>
-            <button class="icon-btn no-print" onclick="exportDataForDeploy()" 
-                    style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
-                    title="匯出 data.json(供上傳到 GitHub 與他人同步)">☁️ 同步至雲端</button>
-            <button class="icon-btn no-print" onclick="state.newProjectModal = true; render();"
-                    style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600"
-                    title="開啟新的月報填報專案,生成 filling_XXXXX.html 供管理處填報">📋 開新月報專案</button>
-            <label class="icon-btn no-print" 
-                   style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer"
-                   title="一次選擇 3 個基底 Excel,系統自動抽取 5 個 sheet 作為填報基底資料">
-              📥 匯入填報基底
-              <input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
+            <button class="icon-btn no-print" onclick="exportJSON()">💾 匯出 JSON</button>
+            <button class="icon-btn no-print" onclick="exportDataForDeploy()" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600">☁️ 同步至雲端</button>
+            <button class="icon-btn no-print" onclick="state.newProjectModal = true; render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button>
+            <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer">
+              📥 匯入填報基底<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
             </label>
-            <label class="icon-btn no-print" 
-                   style="background:#dcfce7;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer"
-                   title="一次選擇多個從各管理處收到的填報 Excel,系統會自動歸位、更新收件狀態">
-              📤 匯入月報填報
-              <input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
+            <label class="icon-btn no-print" style="background:#dcfce7;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer">
+              📤 匯入月報填報<input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
             </label>
             <label class="icon-btn no-print" style="cursor:pointer">📥 匯入<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
             <div class="flex items-center gap-2 rounded-xl p-1" style="background:#f1f5f9">
               <button class="tab-btn ${state.tab === 'solar' ? 'active-solar' : ''}" onclick="setState({tab:'solar'})">
-                ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${DATA.solar.summary.total_completed_cases + DATA.solar.construction_sites.length + DATA.solar.admin_sites.length} 案</span>
+                ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${solarCount} 案</span>
               </button>
               <button class="tab-btn ${state.tab === 'hydro' ? 'active-hydro' : ''}" onclick="setState({tab:'hydro'})">
-                ${ICON.drop}<span>小水力</span><span class="text-xs opacity-80">${DATA.hydro.sites.filter(s=>s.substage!=='潛力').length} 案</span>
+                ${ICON.drop}<span>小水力</span><span class="text-xs opacity-80">${hydroCount} 案</span>
               </button>
-            </div>
-          </div>
-
-          <!-- 手機版：Tab + 漢堡 -->
-          <div class="btn-group-mobile flex items-center gap-2">
-            <div class="flex items-center gap-1 rounded-xl p-1" style="background:#f1f5f9">
-              <button class="tab-btn ${state.tab === 'solar' ? 'active-solar' : ''}" onclick="setState({tab:'solar'})">
-                ${ICON.sun}<span>太陽光電</span>
-              </button>
-              <button class="tab-btn ${state.tab === 'hydro' ? 'active-hydro' : ''}" onclick="setState({tab:'hydro'})">
-                ${ICON.drop}<span>小水力</span>
-              </button>
-            </div>
-            <button class="icon-btn no-print" onclick="document.getElementById('mobile-menu').classList.add('open')" style="padding:7px 10px;font-size:16px">☰</button>
-          </div>
-
-          <!-- 手機版抽屜選單 -->
-          <div id="mobile-menu" onclick="if(event.target===this)this.classList.remove('open')">
-            <div id="mobile-menu-panel">
-              <button id="mobile-menu-close" onclick="document.getElementById('mobile-menu').classList.remove('open')">✕</button>
-              <p style="font-size:11px;color:#94a3b8;font-weight:600;letter-spacing:0.1em;margin-bottom:4px">操作選單</p>
-              <button class="icon-btn no-print" onclick="openEditor('solar.completed_sites');document.getElementById('mobile-menu').classList.remove('open')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e">✏️ 編輯資料</button>
-              <button class="icon-btn no-print" onclick="exportDataForDeploy();document.getElementById('mobile-menu').classList.remove('open')" style="background:#0ea5e9;color:white;border-color:#0284c7">☁️ 同步至雲端</button>
-              <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;cursor:pointer">
-                📥 匯入填報基底<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event);document.getElementById('mobile-menu').classList.remove('open')" style="display:none">
-              </label>
-              <label class="icon-btn no-print" style="background:#dcfce7;color:#15803d;border-color:#16a34a;cursor:pointer">
-                📤 匯入月報填報<input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event);document.getElementById('mobile-menu').classList.remove('open')" style="display:none">
-              </label>
-              <label class="icon-btn no-print" style="cursor:pointer">📥 匯入 Excel/JSON<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event);document.getElementById('mobile-menu').classList.remove('open')" style="display:none"></label>
-              <button class="icon-btn no-print" onclick="resetData();document.getElementById('mobile-menu').classList.remove('open')" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
-              <button class="icon-btn no-print" onclick="exportJSON()" style="">💾 匯出 JSON</button>
-              <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();document.getElementById('mobile-menu').classList.remove('open')" style="background:#7c3aed;color:white;border-color:#6d28d9">📋 開新月報專案</button>
             </div>
           </div>
         </div>
-        <!-- 手機版獨立 Tab 列（桌面隱藏） -->
-        <div class="hdr-tab-row" style="display:none">
-          <div class="flex items-center gap-1 rounded-xl p-1" style="background:#f1f5f9;display:inline-flex">
-            <button class="tab-btn ${state.tab === 'solar' ? 'active-solar' : ''}" onclick="setState({tab:'solar'})">
-              ${ICON.sun}<span>太陽光電</span>
-            </button>
-            <button class="tab-btn ${state.tab === 'hydro' ? 'active-hydro' : ''}" onclick="setState({tab:'hydro'})">
-              ${ICON.drop}<span>小水力</span>
-            </button>
-          </div>
-        </div>
-        <div class="hdr-stats mt-4 pt-3 border-t flex items-center gap-6 flex-wrap text-xs" style="border-color:var(--border);color:var(--ink-soft)">
+        <div class="mt-4 pt-3 border-t flex items-center gap-6 flex-wrap text-xs" style="border-color:var(--border);color:var(--ink-soft)">
           ${state.tab === 'solar' ? `
-            <span title="自動從 135 件已完工案場容量加總計算">已完工容量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.total_completed_mw} MW</strong> / 目標 600 MW</span>
-            <span title="自動計算:已完工容量 / 600 MW">整體達成率：<strong class="tabular-nums" style="color:var(--solar);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.total_completed_mw/600*100).toFixed(1)}%</strong></span>
-            <span title="來自最新匯入的太陽光電盤點 Excel">圳路長度：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.channel_length_km} km</strong></span>
-            <span title="來自最新匯入的太陽光電盤點 Excel(萬度/10000)">估計年發電量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.gen_total_million_kwh/10000).toFixed(2)} 億度</strong></span>
+            <span>已完工容量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.total_completed_mw} MW</strong> / 目標 600 MW</span>
+            <span>整體達成率：<strong class="tabular-nums" style="color:var(--solar);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.total_completed_mw/600*100).toFixed(1)}%</strong></span>
+            <span>圳路長度：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${DATA.solar.summary.channel_length_km} km</strong></span>
+            <span>估計年發電量：<strong class="tabular-nums" style="color:var(--ink);background:#fef3c7;padding:0 4px;border-radius:3px">${(DATA.solar.summary.gen_total_million_kwh/10000).toFixed(2)} 億度</strong></span>
           ` : `
             <span>總案場：<strong class="tabular-nums" style="color:var(--ink)">${DATA.hydro.summary.total_cases} 案</strong></span>
             <span>總容量：<strong class="tabular-nums" style="color:var(--ink)">${(DATA.hydro.summary.total_capacity_kw/1000).toFixed(2)} MW</strong></span>
@@ -5939,11 +5888,28 @@ function tplHeader() {
           `}
         </div>
       </div>
+
+      <!-- ===== 手機版（桌面隱藏） ===== -->
+      <div class="mobile-header px-3 py-2">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs" style="color:var(--ink-muted)">農田水利署・水域型農業綠能</p>
+            <p class="font-bold" style="font-size:1rem;color:var(--ink)">管制考核儀表板</p>
+          </div>
+          <div class="flex items-center gap-1 rounded-xl p-1" style="background:#f1f5f9">
+            <button class="tab-btn ${state.tab === 'solar' ? 'active-solar' : ''}" onclick="setState({tab:'solar'})" style="padding:5px 10px;font-size:11px">
+              ${ICON.sun}<span>太陽光電</span>
+            </button>
+            <button class="tab-btn ${state.tab === 'hydro' ? 'active-hydro' : ''}" onclick="setState({tab:'hydro'})" style="padding:5px 10px;font-size:11px">
+              ${ICON.drop}<span>小水力</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
     </header>`;
 }
 
-// ==================== 圖表渲染 ====================
-const chartInstances = {};
 function destroyCharts() {
   Object.values(chartInstances).forEach(c => c && c.destroy && c.destroy());
   Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
@@ -6946,70 +6912,48 @@ ${styleTags}
   @page { size: A4; margin: 12mm; }
 
   /* ===== Mobile RWD ===== */
+
+  /* 桌面：隱藏手機版 header */
+  @media (min-width: 641px) {
+    .mobile-header { display: none !important; }
+  }
+
+  /* 手機：隱藏桌面版 header，只留手機版 */
   @media (max-width: 640px) {
-    /* Header 極簡：隱藏所有按鈕、副標、統計列 */
-    .hdr-buttons   { display: none !important; }
-    .hdr-subtitle  { display: none !important; }
-    .hdr-stats     { display: none !important; }
-    .btn-group-full   { display: none !important; }
-    .btn-group-mobile { display: none !important; }
-    #mobile-menu   { display: none !important; }
+    .desktop-header { display: none !important; }
 
-    /* Header 只剩標題 + Tab，緊湊 */
-    header { padding: 0 !important; }
-    .hdr-inner { padding: 8px 12px 0 !important; }
-    .hdr-title h1 { font-size: 1.1rem; line-height: 1.2; }
-    .hdr-title p  { display: none; }
+    /* Main 留邊縮小 */
+    main { padding-left: 10px !important; padding-right: 10px !important; padding-top: 8px !important; }
 
-    /* Tab 切換貼近標題（手機版顯示） */
-    .hdr-tab-row { display: block !important; padding: 6px 12px 6px !important; }
-
-    /* Main 幾乎沒留邊 */
-    main { padding: 8px 10px !important; }
-
-    /* KPI 卡片：2欄 */
+    /* KPI 卡片 2欄 */
     .lg\:grid-cols-4 { grid-template-columns: repeat(2,1fr) !important; }
     .lg\:grid-cols-3 { grid-template-columns: repeat(2,1fr) !important; }
     .lg\:grid-cols-5 { grid-template-columns: 1fr !important; }
     .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
-    .grid-cols-2     { grid-template-columns: repeat(2,1fr) !important; }
 
     /* 管理處表格橫向捲動 */
     .mgmt-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .mgmt-table      { min-width: 480px; font-size: 11px; }
+    .mgmt-table { min-width: 480px; font-size: 11px; }
 
     /* Section padding 縮小 */
-    .section-card .px-6 { padding-left: 10px !important; padding-right: 10px !important; }
-    .section-card .py-6 { padding-top: 10px !important; padding-bottom: 10px !important; }
     .px-6 { padding-left: 10px !important; padding-right: 10px !important; }
     .py-6 { padding-top: 10px !important; padding-bottom: 10px !important; }
 
     /* Modal 全寬 */
-    .modal-content { 
-      max-width: calc(100vw - 16px) !important; 
+    .modal-content {
+      max-width: calc(100vw - 16px) !important;
       margin: 8px auto !important;
       border-radius: 12px !important;
     }
     .modal-content .p-6 { padding: 14px !important; }
 
     /* 圖表高度縮小 */
-    canvas { max-height: 180px; }
+    canvas { max-height: 200px; }
 
-    /* KPI 卡片文字縮小 */
-    .kpi-value { font-size: 1.5rem !important; }
-    .kpi-label { font-size: 0.65rem !important; }
-
-    /* section-card gap */
+    /* gap 縮小 */
     .gap-3 { gap: 8px !important; }
-    .gap-5 { gap: 10px !important; }
     .mb-6  { margin-bottom: 12px !important; }
   }
-  @media (min-width: 641px) {
-    .btn-group-mobile { display: none !important; }
-    #mobile-menu { display: none !important; }
-    .hdr-tab-row { display: none !important; }
-  }
-
 </style>
 </head>
 <body>
