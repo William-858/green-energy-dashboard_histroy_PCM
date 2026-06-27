@@ -4733,7 +4733,8 @@ function getVendorAnalysis() {
 // ==================== 狀態 ====================
 const state = {
   tab: 'solar',
-  viewMode: 'desktop',  // 'desktop' | 'mobile'
+  viewMode: 'desktop',
+  opinionExpanded: false,
   solar: { mgmt: 'all', type: 'all', stage: 'all', search: '' },
   hydro: { mgmt: 'all', substage: 'all', anomaly: 'all', search: '' },
   cancelYear: 'all',
@@ -4742,7 +4743,6 @@ const state = {
   vendorModal: null,
   siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
   listModal: null,   // { title, subtitle, caseRefs:[], color }
-  opinionExpanded: false,  // 輿情監控區塊展開/縮合
   expandedSolarSec: { anomaly: false, vendor: false, target: false },
   expandedMonthStatus: false,   // 月報收件狀態看板展開/縮合
   newProjectModal: false,   // 開新月報專案 modal
@@ -5937,6 +5937,8 @@ function tplHeader() {
     </header>`;
 }
 
+const chartInstances = {};
+
 function destroyCharts() {
   Object.values(chartInstances).forEach(c => c && c.destroy && c.destroy());
   Object.keys(chartInstances).forEach(k => delete chartInstances[k]);
@@ -5988,7 +5990,7 @@ function renderCharts() {
     if (c2) chartInstances.year = new Chart(c2, {
       type: 'bar',
       data: { labels: ['112年','113年','114年'], datasets: [{ label: '解約容量 (MW)', data: [yearMap[112], yearMap[113], yearMap[114]], backgroundColor: '#dc2626', borderRadius: 4 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: Math.max(...mgmtA.map(m=>m.anomaly_cases), 1) + 1, ticks: { font: baseFont, stepSize: 1, precision: 0 } } } }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, ticks: { font: baseFont } } } }
     });
     
     // 廠商解約分析條形圖(可點某廠商查看其所有解約案場)
@@ -6068,7 +6070,7 @@ function renderCharts() {
           legend: { display: false },
           tooltip: { callbacks: { afterLabel: () => '(點擊查看清單)' } }
         }, 
-        scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: Math.max(...typeData.map(t=>t[1])) + 1, ticks: { font: baseFont, stepSize: 1, precision: 0 } } },
+        scales: { x: { ticks: { font: baseFont } }, y: { beginAtZero: true, max: typeData.length > 0 ? Math.max(...typeData.map(t=>t[1])) + 1 : 2, ticks: { font: baseFont, stepSize: 1, precision: 0 } } },
         onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
         onClick: (e, els) => {
           if (!els || els.length === 0) return;
@@ -6937,8 +6939,10 @@ ${styleTags}
     .print-cards { gap: 6px; }
   }
   @page { size: A4; margin: 12mm; }
-
   /* ===== Mobile viewMode ===== */
+  @media (min-width: 641px) {
+    .mobile-header { display: none !important; }
+  }
   body.mobile-view main {
     padding-left: 10px !important;
     padding-right: 10px !important;
@@ -6946,20 +6950,15 @@ ${styleTags}
   }
   body.mobile-view .lg\:grid-cols-4 { grid-template-columns: repeat(2,1fr) !important; }
   body.mobile-view .lg\:grid-cols-3 { grid-template-columns: repeat(2,1fr) !important; }
-  body.mobile-view .lg\:grid-cols-5 { grid-template-columns: 1fr !important; }
   body.mobile-view .md\:grid-cols-2 { grid-template-columns: 1fr !important; }
   body.mobile-view .mgmt-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   body.mobile-view .mgmt-table      { min-width: 480px; font-size: 11px; }
-  body.mobile-view .px-6 { padding-left: 10px !important; padding-right: 10px !important; }
-  body.mobile-view .py-6 { padding-top: 10px !important; padding-bottom: 10px !important; }
-  body.mobile-view .gap-3 { gap: 8px !important; }
-  body.mobile-view .mb-6  { margin-bottom: 12px !important; }
   body.mobile-view canvas { max-height: 200px; }
   body.mobile-view .modal-content {
     max-width: calc(100vw - 16px) !important;
     margin: 8px auto !important;
-    border-radius: 12px !important;
   }
+
 </style>
 </head>
 <body>
@@ -7010,7 +7009,6 @@ async function exportPNG(sectionId, filename) {
 
 // ==================== Render ====================
 function render() {
-  // 根據 viewMode 切換 body class
   document.body.classList.toggle('mobile-view', state.viewMode === 'mobile');
   const app = document.getElementById('app');
   const focusInfo = { 
