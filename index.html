@@ -3726,49 +3726,61 @@ function cancelImport() {
 function tplOpinionSection() {
   const opinions = loadOpinions(state.tab);
   const tabLabel = state.tab === 'solar' ? '太陽光電' : '小水力';
-  
+  const expanded = state.opinionExpanded;
+  const count = opinions.length;
+
   return `
     <section id="sec-opinion" class="section-card" style="border: 2px solid #f59e0b; background: linear-gradient(to right, #fffbeb, #fff7ed);">
-      <div class="px-6 py-4">
-        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-          <div>
-            <p class="text-xs font-medium uppercase mb-1" style="color:#92400e;letter-spacing:0.1em">PUBLIC OPINION MONITOR · ${state.tab.toUpperCase()}</p>
-            <h2 class="text-xl font-bold font-serif-tc" style="color:#78350f">📢 ${tabLabel}輿情監控</h2>
-            <p class="text-xs mt-1" style="color:#92400e">負面輿論與我方澄清資料並列追蹤,提供長官即時掌握</p>
+      <!-- 標題列：永遠顯示，點擊展開/縮合 -->
+      <div class="px-6 py-4" style="cursor:pointer" onclick="setState({opinionExpanded:!state.opinionExpanded})">
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <span style="font-size:20px">📢</span>
+            <div>
+              <p class="text-xs font-medium uppercase" style="color:#92400e;letter-spacing:0.1em">PUBLIC OPINION MONITOR · ${state.tab.toUpperCase()}</p>
+              <p class="font-bold" style="color:#78350f;font-size:1rem">${tabLabel}輿情監控
+                ${count > 0 ? `<span style="font-size:12px;font-weight:400;color:#92400e;margin-left:8px">${count} 則事件</span>` : '<span style="font-size:12px;font-weight:400;color:#b45309;margin-left:8px">尚無記錄</span>'}
+              </p>
+            </div>
           </div>
-          <div class="flex gap-2 flex-wrap">
-            <button class="icon-btn no-print" 
-                    style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600"
-                    onclick="window.open('https://script.google.com/a/macros/g.triwra.org.tw/s/AKfycbyrpYuXl6IsfUtJGi7GUuVU4H6WDFUoJ9VxI-L8x_IhQgMNIlAN9_osqbiIvEieE4j0/exec?page=candidates&key=GREENENERGY','_blank','noopener')"
-                    title="開啟內部輿情搜尋頁(需 g.triwra.org.tw 帳號登入),挑到要追蹤的新聞後回來點「➕ 新增輿情事件」貼上連結與摘要">
-              🔍 開啟輿情搜尋頁
-            </button>
-            <button class="icon-btn no-print" 
-                    style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
-                    onclick="exportOpinionsJson()"
-                    title="匯出輿情 JSON 檔(供上傳到 GitHub 與長官同步)">
-              📤 匯出 JSON
-            </button>
-            <button class="icon-btn no-print" 
-                    style="background:#f59e0b;color:white;border-color:#d97706;font-weight:600"
-                    onclick="state.opinionEditor = { mode: 'create' }; render();">
-              ➕ 新增${tabLabel}輿情事件
+          <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+            ${expanded ? `
+              <button class="icon-btn no-print" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600"
+                onclick="window.open('https://script.google.com/a/macros/g.triwra.org.tw/s/AKfycbyrpYuXl6IsfUtJGi7GUuVU4H6WDFUoJ9VxI-L8x_IhQgMNIlAN9_osqbiIvEieE4j0/exec?page=candidates&key=GREENENERGY','_blank','noopener')">
+                🔍 開啟輿情搜尋頁
+              </button>
+              <button class="icon-btn no-print" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600"
+                onclick="exportOpinionsJson()">📤 匯出 JSON</button>
+              <button class="icon-btn no-print" style="background:#f59e0b;color:white;border-color:#d97706;font-weight:600"
+                onclick="state.opinionEditor={mode:'create'};render()">➕ 新增${tabLabel}輿情事件</button>
+            ` : ''}
+            <button style="border:1px solid #f59e0b;border-radius:6px;padding:4px 10px;background:white;cursor:pointer;font-size:13px;color:#92400e;font-weight:600"
+              onclick="setState({opinionExpanded:!state.opinionExpanded})">
+              ${expanded ? '收起 ▲' : '展開 ▼'}
             </button>
           </div>
         </div>
-        
-        ${opinions.length === 0 ? `
-          <div class="text-center py-8" style="color:#92400e">
-            <p class="text-sm">目前尚無輿情事件記錄</p>
-            <p class="text-xs mt-1">點選右上方「➕ 新增輿情事件」開始建立</p>
-          </div>
-        ` : opinions.map(op => tplOpinionCard(op)).join('')}
       </div>
+
+      <!-- 內容：只有展開時顯示 -->
+      ${expanded ? `
+      <div class="px-6 pb-5" style="border-top:1px solid #fcd34d">
+        <div class="pt-4">
+          ${count === 0 ? `
+            <div class="text-center py-8" style="color:#92400e">
+              <p class="text-sm">目前尚無輿情事件記錄</p>
+              <p class="text-xs mt-1">點選右上方「➕ 新增輿情事件」開始建立</p>
+            </div>
+          ` : opinions.map(op => tplOpinionCard(op)).join('')}
+        </div>
+      </div>
+      ` : ''}
     </section>
   `;
 }
 
 // 單一輿情事件卡片
+
 function tplOpinionCard(op) {
   const status = OPINION_STATUSES[op.status] || OPINION_STATUSES.unhandled;
   const severity = OPINION_SEVERITIES[op.severity] || OPINION_SEVERITIES.medium;
@@ -4730,6 +4742,7 @@ const state = {
   vendorModal: null,
   siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
   listModal: null,   // { title, subtitle, caseRefs:[], color }
+  opinionExpanded: false,  // 輿情監控區塊展開/縮合
   expandedSolarSec: { anomaly: false, vendor: false, target: false },
   expandedMonthStatus: false,   // 月報收件狀態看板展開/縮合
   newProjectModal: false,   // 開新月報專案 modal
