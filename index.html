@@ -4743,7 +4743,8 @@ const state = {
   vendorModal: null,
   siteModal: null,   // { caseRef: 'solar:completed_sites:5' }
   listModal: null,   // { title, subtitle, caseRefs:[], color }
-  expandedSolarSec: { anomaly: false, vendor: false, target: false, stage: false },
+  expandedSolarSec: { anomaly: false, vendor: false, target: false, stage: false, mgmt: false },
+  expandedHydroSec: { anomaly: false, stage: false, mgmt: false },
   expandedMonthStatus: false,   // 月報收件狀態看板展開/縮合
   newProjectModal: false,   // 開新月報專案 modal
   activeMonthPeriod: null,  // 收件狀態看板正在看的期別
@@ -5457,6 +5458,29 @@ function tplSolarDashboard() {
     ` : ''}
 
     <!-- 5. 管理處綜合 -->
+    ${state.viewMode === 'mobile' ? `
+    <section id="sec-solar-mgmt" class="section-card mt-8">
+      <div class="px-6 py-4 flex items-center justify-between" style="cursor:pointer;border-bottom:${state.expandedSolarSec.mgmt?'1px solid var(--border)':'none'}" onclick="toggleSolarSec('mgmt')">
+        <div>
+          <p class="text-xs font-medium uppercase mb-0.5" style="color:var(--solar);letter-spacing:0.1em">各管理處綜合進度比較</p>
+          <p class="text-xs" style="color:var(--ink-soft)">完工＋施工＋行政＋規劃 容量堆疊</p>
+        </div>
+        <span style="font-size:12px;color:var(--ink-soft)">${state.expandedSolarSec.mgmt ? '收起 ▲' : '展開 ▼'}</span>
+      </div>
+      ${state.expandedSolarSec.mgmt ? `
+      <div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.building, title: '各管理處綜合進度比較', subtitle: '完工＋施工＋行政＋規劃 容量堆疊', accent: 'var(--solar)', sectionId: 'sec-solar-mgmt', exportLabel: '光電-管理處進度' })}
+      </div>
+      <div class="px-6 pb-6">
+        <div style="position:relative;height:420px"><canvas id="chart-mgmt-solar"></canvas></div>
+        <p class="text-[11px] mt-3 text-center" style="color:var(--ink-muted)">※ 點圖表下方管理處名稱可深入查看該處所有案場</p>
+        <div class="flex flex-wrap gap-2 mt-3 justify-center">
+          ${DATA.solar.mgmt.map(m => `<button class="filter-btn" onclick="openMgmtModal('${m.name}')">${m.name} 處</button>`).join('')}
+        </div>
+      </div>
+      ` : ''}
+    </section>
+    ` : `
     <section id="sec-solar-mgmt" class="section-card mt-8">
       <div class="px-6 pt-6">
         ${tplSectionHeader({ icon: ICON.building, title: '各管理處綜合進度比較', subtitle: '完工＋施工＋行政＋規劃 容量堆疊', accent: 'var(--solar)', sectionId: 'sec-solar-mgmt', exportLabel: '光電-管理處進度' })}
@@ -5469,6 +5493,7 @@ function tplSolarDashboard() {
         </div>
       </div>
     </section>
+    `}
     
     
   `;
@@ -5528,9 +5553,9 @@ function tplSolarFilters() {
           <select onchange="setState({solar:{...state.solar,vendor:this.value}})"
             style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--ink);max-width:160px">
             <option value="all" ${state.solar.vendor==='all'?'selected':''}>全部廠商</option>
-            ${vendors.map(v => `<option value="${v}" ${state.solar.vendor===v?'selected':''}>${v.length>16?v.slice(0,16)+'…':v}</option>`).join('')}
+            ${vendors.map(v => '<option value="' + v + '" ' + (state.solar.vendor===v?'selected':'') + '>' + (v.length>16?v.slice(0,16)+'…':v) + '</option>').join('')}
           </select>
-          ${state.solar.vendor !== 'all' ? `<button onclick="setState({solar:{...state.solar,vendor:'all'}})" style="font-size:11px;color:#dc2626;background:none;border:none;cursor:pointer">✕</button>` : ''}
+          ${state.solar.vendor !== 'all' ? '<button onclick="setState({solar:{...state.solar,vendor:\'all\'}})" style="font-size:11px;color:#dc2626;background:none;border:none;cursor:pointer">✕</button>' : ''}
         </div>
         <button class="icon-btn no-print" onclick="printFilteredView('solar-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
       </div>
@@ -5566,39 +5591,171 @@ function tplSolarCards() {
 }
 
 // ==================== 區塊：小水力 ====================
-function tplHydroDashboard() {
-  // 帶上 _idx + 用 isRealAnomaly 過濾掉「機組已拆除/待拆除」這類非異常
-  const sitesWithIdx = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
-  const anomalies = sitesWithIdx.filter(s => isRealAnomaly(s));
-  const red = anomalies.filter(a => a.anomaly_level === 'red');
-  const yellow = anomalies.filter(a => a.anomaly_level === 'yellow');
-  
-  // typeMap: 類型 → 數量;typeRefs: 類型 → caseRefs
-  const typeMap = {};
-  const typeRefs = {};
-  anomalies.forEach(a => { 
-    typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1;
-    if (!typeRefs[a.anomaly_type]) typeRefs[a.anomaly_type] = [];
-    typeRefs[a.anomaly_type].push('hydro:sites:' + a._idx);
-  });
-  
-  // substageMap: 類別 → 統計;substageRefs: 類別 → caseRefs
-  const substageMap = {};
-  const substageRefs = {};
-  sitesWithIdx.forEach(s => {
-    if (!substageMap[s.substage]) substageMap[s.substage] = { name: s.substage, cases: 0, kw: 0 };
-    substageMap[s.substage].cases += 1;
-    substageMap[s.substage].kw += s.capacity_kw;
-    if (!substageRefs[s.substage]) substageRefs[s.substage] = [];
-    substageRefs[s.substage].push('hydro:sites:' + s._idx);
-  });
-  const substageOrder = ['營運中','推動中','專案示範','測試','潛力'];
-  const substageData = substageOrder.map(n => substageMap[n]).filter(Boolean);
-  
-  const mgmtSorted = [...DATA.hydro.mgmt].sort((a,b) => b.capacity_kw - a.capacity_kw);
-  
-  return `
-    <section id="sec-hydro-anomaly" class="section-card">
+
+
+function _tplHydroAnomalyInner(red, yellow, typeMap, typeRefs, anomalies) {
+  return `<div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.alert, title: '異常警示案件', subtitle: '紅燈：撤案／終止／暫緩／拆機組；黃燈：機組調整／展延', accent: 'var(--alert)', sectionId: 'sec-hydro-anomaly', exportLabel: '小水力-異常警示' })}
+      </div>
+      <div class="px-6 pb-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          ${tplKpi({ 
+            label: '紅燈案件', value: red.length, unit: '案', danger: true,
+            sublabel: '累計影響 ' + red.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW',
+            onClick: 'openListModal(\'紅燈案件清單\', \'撤案/終止/暫緩/拆機組,共 ' + red.length + ' 案\', ' + JSON.stringify(red.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--alert)\')'
+          })}
+          ${tplKpi({ 
+            label: '黃燈案件', value: yellow.length, unit: '案', accent: 'var(--warning)',
+            sublabel: '累計 ' + yellow.reduce((a,c)=>a+c.capacity_kw,0).toFixed(0) + ' kW 進度延宕',
+            onClick: 'openListModal(\'黃燈案件清單\', \'機組調整/展延,共 ' + yellow.length + ' 案\', ' + JSON.stringify(yellow.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--warning)\')'
+          })}
+          ${(() => {
+            const topType = Object.entries(typeMap).sort((a,b)=>b[1]-a[1])[0];
+            return tplKpi({ 
+              label: '主要異常類型', value: topType?.[0] || '-', accent: 'var(--warning)',
+              sublabel: (topType?.[1] || 0) + ' 案',
+              onClick: topType ? 'openListModal(\'主要異常類型:' + topType[0] + '\', \'此類型共 ' + topType[1] + ' 案\', ' + JSON.stringify(typeRefs[topType[0]] || []).replace(/"/g,'&quot;') + ', \'var(--warning)\')' : null
+            });
+          })()}
+          ${tplKpi({ 
+            label: '異常案件比', value: (anomalies.length/DATA.hydro.sites.length*100).toFixed(0) + '%', accent: 'var(--warning)',
+            sublabel: '共 ' + anomalies.length + ' / ' + DATA.hydro.sites.length + ' 案場',
+            onClick: 'openListModal(\'全部異常案場\', \'紅燈 ' + red.length + ' + 黃燈 ' + yellow.length + ' = ' + anomalies.length + ' 案\', ' + JSON.stringify(anomalies.map(a => 'hydro:sites:'+a._idx)).replace(/"/g,'&quot;') + ', \'var(--warning)\')'
+          })}
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
+          <div class="lg:col-span-3 rounded-xl border p-5" style="border-color:var(--border);background:#fef2f2">
+            <h3 class="text-sm font-bold mb-3">異常類型分布</h3>
+            <div style="position:relative;height:220px"><canvas id="chart-hydro-type"></canvas></div>
+          </div>
+          <div class="lg:col-span-2 rounded-xl border p-5" style="border-color:var(--border);background:#fef2f2">
+            <h3 class="text-sm font-bold mb-3">各管理處異常案件數</h3>
+            <div style="position:relative;height:220px"><canvas id="chart-hydro-mgmt-anomaly"></canvas></div>
+          </div>
+        </div>
+        
+        <h3 class="text-sm font-bold mb-3 flex items-center gap-2">
+          <span style="width:4px;height:16px;background:var(--alert);border-radius:2px"></span>
+          異常案件清單（紅燈優先）
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${[...red, ...yellow].map(a => `
+            <div class="rounded-lg border p-4 mgmt-clickable" style="border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'};background:${a.anomaly_level === 'red' ? '#fef2f2' : '#fff7ed'}" onclick="openSiteModal('hydro:sites:${a._idx}', true)">
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <div class="flex-1">
+                  <p class="font-semibold text-sm">${a.name}</p>
+                  <p class="text-xs mt-0.5" style="color:var(--ink-soft)">${a.mgmt}管理處・${a.county}${a.township}</p>
+                </div>
+                ${tplBadge(a.anomaly_type, a.anomaly_level === 'red' ? 'var(--alert)' : 'var(--warning)', a.anomaly_level === 'red' ? '#fee2e2' : '#fed7aa')}
+              </div>
+              <div class="flex items-center gap-3 text-xs flex-wrap mb-2">
+                <span style="color:var(--ink-soft)">容量 <strong>${a.capacity_kw} kW</strong></span>
+                <span style="color:var(--ink-soft)">類別 <strong>${a.substage}</strong></span>
+              </div>
+              <p class="text-xs pt-2 border-t" style="color:${a.anomaly_level==='red'?'#991b1b':'#92400e'};border-color:${a.anomaly_level === 'red' ? '#fecaca' : '#fed7aa'}">
+                <strong>異常原因：${a.anomaly_type}</strong> — ${String(a.operation||'').slice(0,80)}${(a.operation||'').length>80?'…':''}
+              </p>
+              ${a.vendor ? `<p class="text-xs mt-1" style="color:var(--ink-muted)">廠商：${a.vendor.split('(')[0].trim()}</p>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+}
+function _tplHydroStageInner(substageData, substageRefs) {
+  return `<div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.layers, title: '案場類別分布', subtitle: '全部 ' + DATA.hydro.sites.length + ' 案、合計 ' + (DATA.hydro.sites.reduce((a,c)=>a+c.capacity_kw,0)/1000).toFixed(2) + ' MW', accent: 'var(--hydro)', sectionId: 'sec-hydro-stage', exportLabel: '小水力-類別分布' })}
+      </div>
+      <div class="px-6 pb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          ${substageData.map(s => {
+            const color = SUBSTAGE_COLORS[s.name] || 'var(--hydro)';
+            const refs = substageRefs[s.name] || [];
+            const onClickStr = refs.length > 0 
+              ? `openListModal('${s.name} 案場列表', '共 ${s.cases} 案、合計 ${s.kw.toFixed(1)} kW', ${JSON.stringify(refs).replace(/"/g,'&quot;')}, '${color}')`
+              : '';
+            return `
+              <div class="rounded-xl border p-4 ${onClickStr ? 'mgmt-clickable' : ''}" 
+                   style="border-color:var(--border);background:${color}08;${onClickStr ? 'cursor:pointer' : ''}"
+                   ${onClickStr ? 'onclick="'+onClickStr+'"' : ''}
+                   ${onClickStr ? 'title="點擊查看 '+s.cases+' 個案場"' : ''}>
+                <div class="text-xs font-medium mb-1.5 flex items-center justify-between" style="color:${color}">
+                  <span>${s.name}</span>
+                  ${onClickStr ? '<span style="color:var(--ink-muted);font-size:11px">↗</span>' : ''}
+                </div>
+                <div class="flex items-baseline gap-1">
+                  <span class="text-2xl font-bold tabular-nums font-serif-tc">${s.cases}</span>
+                  <span class="text-xs" style="color:var(--ink-soft)">案</span>
+                </div>
+                <div class="text-sm font-semibold mt-1 tabular-nums" style="color:${color}">${s.kw.toFixed(1)} kW</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+}
+function _tplHydroMgmtInner(mgmtSorted, sitesWithIdx) {
+  return `<div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.building, title: '各管理處推動概況', subtitle: '按容量排序，可點任一處深入查看', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt', exportLabel: '小水力-管理處概況' })}
+      </div>
+      <div class="px-6 pb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div>
+            <h3 class="text-sm font-bold mb-3">容量總和（kW）</h3>
+            <div style="position:relative;height:480px"><canvas id="chart-hydro-mgmt-cap"></canvas></div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-bold">各管理處案件數（含異常標示，可點擊）</h3>
+              <button class="icon-btn no-print" onclick="printFilteredView('hydro-mgmt')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;padding:3px 8px;font-size:11px" title="開啟列印頁">🖨️ 列印</button>
+            </div>
+            <div class="space-y-2">
+              ${mgmtSorted.map(m => `
+                <div class="mgmt-clickable rounded-lg border p-3" style="border-color:var(--border)" onclick="openMgmtModal('${m.name}')">
+                  <div class="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-bold text-sm">${m.name}</span>
+                      <span class="text-xs tabular-nums" style="color:var(--ink-soft)">${m.cases} 案 / ${m.capacity_kw.toFixed(0)} kW</span>
+                      ${m.anomaly_cases > 0 ? tplBadge('異常 ' + m.anomaly_cases, 'var(--alert)', '#fee2e2') : ''}
+                    </div>
+                  </div>
+                  <div class="flex" style="height:8px;border-radius:9999px;overflow:hidden;background:#f1f5f9">
+                    <div style="width:${m.completed_cases/m.cases*100}%;background:var(--success)"></div>
+                    <div style="width:${m.in_progress_cases/m.cases*100}%;background:var(--hydro)"></div>
+                  </div>
+                  <div class="flex justify-between mt-1 text-[11px]" style="color:var(--ink-muted)">
+                    <span>完工 ${m.completed_cases}</span>
+                    <span>推動中 ${m.in_progress_cases}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </div>`;
+}
+function _tplHydroMgmtTableSection() {
+  return `<section id="sec-hydro-mgmt-table" class="section-card mt-8">
+      <div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.building, title: '各管理處案場數總覽', subtitle: '【小水力】(' + DATA.hydro.sites.length + ' 案 / ' + DATA.hydro.sites.reduce((a,s)=>a+(s.capacity_kw||0),0).toFixed(0) + ' kW)', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt-table', exportLabel: '小水力-管理處案場數' })}
+      </div>
+      <div class="px-6 pb-6 overflow-x-auto">
+        ${tplHydroMgmtTable()}
+      </div>
+    </section>`;
+}
+function _tplHydroSitesSection() {
+  return `<section id="sec-hydro-sites" class="section-card mt-8 no-print">
+      <div class="px-6 pt-6">
+        ${tplSectionHeader({ icon: ICON.file, title: '案場層級檢視', subtitle: '依管理處／類別／異常／關鍵字篩選', accent: 'var(--hydro)' })}
+      </div>
+      <div class="px-6 pb-6">
+        ${tplHydroFilters()}
+        <div id="hydro-cards-container">${tplHydroCards()}</div>
+      </div>
+    </section>`;
+}
+function _tplHydroAnomalySection(red, yellow, typeMap, typeRefs, anomalies) {
+  return `<section id="sec-hydro-anomaly" class="section-card">
       <div class="px-6 pt-6">
         ${tplSectionHeader({ icon: ICON.alert, title: '異常警示案件', subtitle: '紅燈：撤案／終止／暫緩／拆機組；黃燈：機組調整／展延', accent: 'var(--alert)', sectionId: 'sec-hydro-anomaly', exportLabel: '小水力-異常警示' })}
       </div>
@@ -5666,9 +5823,10 @@ function tplHydroDashboard() {
           `).join('')}
         </div>
       </div>
-    </section>
-    
-    <section id="sec-hydro-stage" class="section-card mt-8">
+    </section>`;
+}
+function _tplHydroStageSection(substageData, substageRefs) {
+  return `<section id="sec-hydro-stage" class="section-card mt-8">
       <div class="px-6 pt-6">
         ${tplSectionHeader({ icon: ICON.layers, title: '案場類別分布', subtitle: '全部 ' + DATA.hydro.sites.length + ' 案、合計 ' + (DATA.hydro.sites.reduce((a,c)=>a+c.capacity_kw,0)/1000).toFixed(2) + ' MW', accent: 'var(--hydro)', sectionId: 'sec-hydro-stage', exportLabel: '小水力-類別分布' })}
       </div>
@@ -5698,18 +5856,10 @@ function tplHydroDashboard() {
           }).join('')}
         </div>
       </div>
-    </section>
-    
-    <section id="sec-hydro-mgmt-table" class="section-card mt-8">
-      <div class="px-6 pt-6">
-        ${tplSectionHeader({ icon: ICON.building, title: '各管理處案場數總覽', subtitle: '【小水力】(' + DATA.hydro.sites.length + ' 案 / ' + DATA.hydro.sites.reduce((a,s)=>a+(s.capacity_kw||0),0).toFixed(0) + ' kW)', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt-table', exportLabel: '小水力-管理處案場數' })}
-      </div>
-      <div class="px-6 pb-6 overflow-x-auto">
-        ${tplHydroMgmtTable()}
-      </div>
-    </section>
-
-    <section id="sec-hydro-mgmt" class="section-card mt-8">
+    </section>`;
+}
+function _tplHydroMgmtSection(mgmtSorted, sitesWithIdx) {
+  return `<section id="sec-hydro-mgmt" class="section-card mt-8">
       <div class="px-6 pt-6">
         ${tplSectionHeader({ icon: ICON.building, title: '各管理處推動概況', subtitle: '按容量排序，可點任一處深入查看', accent: 'var(--hydro)', sectionId: 'sec-hydro-mgmt', exportLabel: '小水力-管理處概況' })}
       </div>
@@ -5748,23 +5898,88 @@ function tplHydroDashboard() {
           </div>
         </div>
       </div>
-    </section>
-    
-    <section id="sec-hydro-sites" class="section-card mt-8 no-print">
-      <div class="px-6 pt-6">
-        ${tplSectionHeader({ icon: ICON.file, title: '案場層級檢視', subtitle: '依管理處／類別／異常／關鍵字篩選', accent: 'var(--hydro)' })}
-      </div>
-      <div class="px-6 pb-6">
-        ${tplHydroFilters()}
-        <div id="hydro-cards-container">${tplHydroCards()}</div>
-      </div>
-    </section>
-  `;
+    </section>`;
+}
+
+
+function tplHydroDashboard() {
+  // 帶上 _idx + 用 isRealAnomaly 過濾掉「機組已拆除/待拆除」這類非異常
+  const sitesWithIdx = DATA.hydro.sites.map((s, i) => ({...s, _idx: i}));
+  const anomalies = sitesWithIdx.filter(s => isRealAnomaly(s));
+  const red = anomalies.filter(a => a.anomaly_level === 'red');
+  const yellow = anomalies.filter(a => a.anomaly_level === 'yellow');
+  
+  // typeMap: 類型 → 數量;typeRefs: 類型 → caseRefs
+  const typeMap = {};
+  const typeRefs = {};
+  anomalies.forEach(a => { 
+    typeMap[a.anomaly_type] = (typeMap[a.anomaly_type] || 0) + 1;
+    if (!typeRefs[a.anomaly_type]) typeRefs[a.anomaly_type] = [];
+    typeRefs[a.anomaly_type].push('hydro:sites:' + a._idx);
+  });
+  
+  // substageMap: 類別 → 統計;substageRefs: 類別 → caseRefs
+  const substageMap = {};
+  const substageRefs = {};
+  sitesWithIdx.forEach(s => {
+    if (!substageMap[s.substage]) substageMap[s.substage] = { name: s.substage, cases: 0, kw: 0 };
+    substageMap[s.substage].cases += 1;
+    substageMap[s.substage].kw += s.capacity_kw;
+    if (!substageRefs[s.substage]) substageRefs[s.substage] = [];
+    substageRefs[s.substage].push('hydro:sites:' + s._idx);
+  });
+  const substageOrder = ['營運中','推動中','專案示範','測試','潛力'];
+  const substageData = substageOrder.map(n => substageMap[n]).filter(Boolean);
+  
+  const mgmtSorted = [...DATA.hydro.mgmt].sort((a,b) => b.capacity_kw - a.capacity_kw);
+  
+  const _hydroCollapsible = (key, accentColor, title, subtitle, innerHtml) => {
+    const exp = state.expandedHydroSec[key];
+    return '<section id="sec-hydro-' + key + '" class="section-card mt-8">'
+      + '<div class="px-6 py-4 flex items-center justify-between"'
+      + ' style="cursor:pointer;border-bottom:' + (exp ? '1px solid var(--border)' : 'none') + '"'
+      + ' onclick="toggleHydroSec(\'' + key + '\')">'
+      + '<div>'
+      + '<p class="text-xs font-medium uppercase mb-0.5" style="color:' + accentColor + ';letter-spacing:0.1em">' + title + '</p>'
+      + '<p class="text-xs" style="color:var(--ink-soft)">' + subtitle + '</p>'
+      + '</div>'
+      + '<span style="font-size:12px;color:var(--ink-soft)">' + (exp ? '收起 ▲' : '展開 ▼') + '</span>'
+      + '</div>'
+      + (exp ? innerHtml : '')
+      + '</section>';
+  };
+
+  const isMobile = state.viewMode === 'mobile';
+
+  // 提前計算 inner HTML（可存取 closure 變數）
+  const anomalyInnerHtml = _tplHydroAnomalyInner(red, yellow, typeMap, typeRefs, anomalies);
+  const stageInnerHtml   = _tplHydroStageInner(substageData, substageRefs);
+  const mgmtInnerHtml    = _tplHydroMgmtInner(mgmtSorted, sitesWithIdx);
+
+  return (
+    (isMobile ? _tplHydroMgmtTableSection() + _tplHydroSitesSection() : '')
+    + (isMobile
+        ? _hydroCollapsible('anomaly', 'var(--alert)', '⚠️ 異常警示案件', '紅燈：撤案／終止／暫緩；黃燈：機組調整', anomalyInnerHtml)
+        : _tplHydroAnomalySection(red, yellow, typeMap, typeRefs, anomalies))
+    + (isMobile
+        ? _hydroCollapsible('stage', 'var(--hydro)', '各管理處案件數', '含異常標示，可點擊', stageInnerHtml)
+        : _tplHydroStageSection(substageData, substageRefs))
+    + (isMobile ? '' : _tplHydroMgmtTableSection())
+    + (isMobile
+        ? _hydroCollapsible('mgmt', 'var(--hydro)', '各管理處推動概況', '按容量排序，可點任一處深入查看', mgmtInnerHtml)
+        : _tplHydroMgmtSection(mgmtSorted, sitesWithIdx))
+    + (isMobile ? '' : _tplHydroSitesSection())
+  );
 }
 
 function tplHydroFilters() {
   const mgmts = [...new Set(DATA.hydro.sites.map(s => s.mgmt))].sort();
   const vendors = [...new Set(DATA.hydro.sites.map(s => s.vendor).filter(v => v && v !== 'NULL' && v !== '-' && v !== '台水公司' && v.trim() !== ''))].sort();
+  const vendorOptions = '<option value="all" ' + (state.hydro.vendor==='all'?'selected':'') + '>全部廠商</option>'
+    + vendors.map(v => '<option value="' + v + '" ' + (state.hydro.vendor===v?'selected':'') + '>' + (v.length>16?v.slice(0,16)+'…':v) + '</option>').join('');
+  const clearBtn = state.hydro.vendor !== 'all'
+    ? '<button onclick="setState({hydro:{...state.hydro,vendor:\'all\'}})" style="font-size:11px;color:#dc2626;background:none;border:none;cursor:pointer">✕</button>'
+    : '';
   return `
     <div class="rounded-xl p-4 mb-5 space-y-3" style="background:#f8fafc">
       <div class="flex items-center gap-2 flex-wrap">
@@ -5778,12 +5993,11 @@ function tplHydroFilters() {
           <span class="text-xs font-medium" style="color:var(--ink-soft)">廠商</span>
           <select onchange="setState({hydro:{...state.hydro,vendor:this.value}})"
             style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--ink);max-width:160px">
-            <option value="all" ${state.hydro.vendor==='all'?'selected':''}>全部廠商</option>
-            ${vendors.map(v => `<option value="${v}" ${state.hydro.vendor===v?'selected':''}>${v.length>16?v.slice(0,16)+'…':v}</option>`).join('')}
+            ${vendorOptions}
           </select>
-          ${state.hydro.vendor !== 'all' ? `<button onclick="setState({hydro:{...state.hydro,vendor:'all'}})" style="font-size:11px;color:#dc2626;background:none;border:none;cursor:pointer">✕</button>` : ''}
+          ${clearBtn}
         </div>
-        <button class="icon-btn no-print" onclick="printFilteredView('hydro-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e" title="依目前篩選條件開啟列印頁">🖨️ 列印篩選結果</button>
+        <button class="icon-btn no-print" onclick="printFilteredView('hydro-sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e">🖨️ 列印篩選結果</button>
       </div>
       <div class="flex items-start gap-4 flex-wrap">
         ${tplFilterGroup('管理處', state.hydro.mgmt, mgmts, 'hydro.mgmt')}
@@ -6221,6 +6435,19 @@ function openMgmtModal(name) {
 }
 
 // 切換太陽光電「深入分析」三區塊展開狀態 + 自動 scroll
+function toggleHydroSec(key, forceOpen) {
+  const cur = state.expandedHydroSec[key];
+  const next = forceOpen !== undefined ? forceOpen : !cur;
+  state.expandedHydroSec = { ...state.expandedHydroSec, [key]: next };
+  render();
+  if (next) {
+    setTimeout(() => {
+      const el = document.getElementById('sec-hydro-' + key);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
+}
+
 function toggleSolarSec(key, forceOpen) {
   const cur = state.expandedSolarSec[key];
   const next = forceOpen !== undefined ? forceOpen : !cur;
