@@ -4736,7 +4736,7 @@ const state = {
   viewMode: 'mobile',
   opinionExpanded: false,
   solar: { mgmt: 'all', type: 'all', stage: 'all', search: '', vendor: 'all' },
-  hydro: { mgmt: 'all', substage: 'all', anomaly: 'all', search: '', vendor: 'all' },
+  hydro: { mgmt: 'all', substage: 'all', category: 'all', operation: 'all', search: '', vendor: 'all' },
   cancelYear: 'all',
   cancelExpanded: false,
   mgmtModal: null,
@@ -5578,7 +5578,7 @@ function tplSolarCards() {
   const filtered = all.filter(s => {
     if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
     if (f.type !== 'all' && s.type !== f.type) return false;
-    if (f.stage !== 'all' && s._stage !== f.stage) return false;
+    if (f.stage !== 'all' && (s._stage || s.stage) !== f.stage) return false;
     if (f.search && !(s.name||'').toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
     return true;
   });
@@ -6001,8 +6001,27 @@ function tplHydroFilters() {
       </div>
       <div class="flex items-start gap-4 flex-wrap">
         ${tplFilterGroup('管理處', state.hydro.mgmt, mgmts, 'hydro.mgmt')}
-        ${tplFilterGroup('類別', state.hydro.substage, ['營運中','推動中','專案示範','測試','潛力'], 'hydro.substage')}
-        ${tplFilterGroup('異常', state.hydro.anomaly, ['red','yellow','none'], 'hydro.anomaly')}
+        <div class="flex items-start gap-2 flex-wrap">
+          <span class="text-xs font-medium pt-1.5" style="color:var(--ink-soft);min-width:32px">類別</span>
+          ${[
+            {val:'all',   label:'全部'},
+            {val:'recruit', label:'招標案'},
+            {val:'test',    label:'測試案'},
+            {val:'demo',    label:'示範案'},
+            {val:'potential',label:'潛力案場'},
+          ].map(o => '<button class="filter-btn ' + (state.hydro.category===o.val?'active':'') + '" onclick="setState({hydro:{...state.hydro,category:\'' + o.val + '\'}})">' + o.label + '</button>').join('')}
+        </div>
+        <div class="flex items-start gap-2 flex-wrap">
+          <span class="text-xs font-medium pt-1.5" style="color:var(--ink-soft);min-width:32px">階段</span>
+          ${[
+            {val:'all',       label:'全部'},
+            {val:'operating', label:'營運中'},
+            {val:'construct', label:'施工中'},
+            {val:'apply',     label:'申設中'},
+            {val:'removed',   label:'拆除'},
+            {val:'potential', label:'潛力案場'},
+          ].map(o => '<button class="filter-btn ' + (state.hydro.operation===o.val?'active':'') + '" onclick="setState({hydro:{...state.hydro,operation:\'' + o.val + '\'}})">' + o.label + '</button>').join('')}
+        </div>
       </div>
     </div>`;
 }
@@ -6013,6 +6032,17 @@ function tplHydroCards() {
   const filtered = withIdx.filter(s => {
     if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
     if (f.substage !== 'all' && s.substage !== f.substage) return false;
+    // 類別篩選
+    if (f.category === 'recruit'   && !['營運中','推動中'].includes(s.substage)) return false;
+    if (f.category === 'test'      && s.substage !== '測試') return false;
+    if (f.category === 'demo'      && s.substage !== '專案示範') return false;
+    if (f.category === 'potential' && s.substage !== '潛力') return false;
+    // 階段篩選（依 operation 欄位）
+    if (f.operation === 'operating' && (s.operation||'') !== '營運中') return false;
+    if (f.operation === 'construct' && (s.operation||'') !== '施工中') return false;
+    if (f.operation === 'apply'     && !['申設中','申請中','籌辦招標'].includes(s.operation||'')) return false;
+    if (f.operation === 'removed'   && (s.operation||'') !== '機組已拆除') return false;
+    if (f.operation === 'potential' && s.substage !== '潛力') return false;
     if (f.anomaly === 'red' && s.anomaly_level !== 'red') return false;
     if (f.anomaly === 'yellow' && s.anomaly_level !== 'yellow') return false;
     if (f.anomaly === 'none' && s.is_anomaly) return false;
@@ -7092,7 +7122,7 @@ function printFilteredView(target) {
     const filtered = all.filter(s => {
       if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
       if (f.type !== 'all' && s.type !== f.type) return false;
-      if (f.stage !== 'all' && s._stage !== f.stage) return false;
+      if (f.stage !== 'all' && (s._stage || s.stage) !== f.stage) return false;
       if (f.search && !(s.name||'').toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
       return true;
     });
