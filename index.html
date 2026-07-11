@@ -10,7 +10,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   .mgmt-table th, .mgmt-table td { padding: 6px 8px; border: 1px solid var(--border); }
   .mgmt-table td:first-child { font-weight: 500; padding-left: 12px; }
@@ -314,6 +314,185 @@ function exportDataForDeploy() {
 // =============================================================
 
 // 安全取字串
+// ===== 匯入 RiChi 基底 =====
+async function importRiChiBase(event) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  event.target.value = '';
+  
+  if (!DATA._richiBase) DATA._richiBase = {};
+  const results = [];
+  
+  for (const file of files) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false });
+      
+      if (wb.SheetNames.includes('太陽光電案場清單')) {
+        const ws   = wb.Sheets['太陽光電案場清單'];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        DATA._richiBase.solar = rows;
+        results.push('太陽光電案場清單：' + (rows.length - 1) + ' 筆');
+      }
+      if (wb.SheetNames.includes('小水力案場清單')) {
+        const ws   = wb.Sheets['小水力案場清單'];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        DATA._richiBase.hydro = rows;
+        results.push('小水力案場清單：' + (rows.length - 1) + ' 筆');
+      }
+    } catch(e) {
+      results.push('讀取失敗：' + file.name + ' (' + e.message + ')');
+    }
+  }
+  
+  if (results.length) {
+    alert('✅ RiChi 基底載入完成\n\n' + results.join('\n') + '\n\n現在可以匯入雙週報並使用「📊 匯出 RiChi」功能。');
+  }
+}
+
+
+// ===== 匯出更新版 RiChi Excel =====
+function exportRiChi() {
+  // 需要 XLSX.js (SheetJS) 已載入
+  if (typeof XLSX === 'undefined') {
+    alert('需要先載入 XLSX 套件才能匯出 Excel');
+    return;
+  }
+  
+  // 取得基底資料（需先匯入填報基底）
+  const base = DATA._richiBase;
+  if (!base || !base.solar || !base.hydro) {
+    alert('請先點擊「📥 匯入填報基底」載入 RiChi 基底檔案，才能匯出更新版。');
+    return;
+  }
+  
+  exportRiChiSolar(base.solar);
+  exportRiChiHydro(base.hydro);
+}
+
+function exportRiChiSolar(baseRows) {
+  if (!baseRows || !baseRows.length) { alert('請先匯入 RiChi 基底（太陽光電案場清單_RiChi）'); return; }
+  // 建立 mapping：案場名稱 → {p, ao}
+  const nameMap = {};
+  
+  // 已完工
+  DATA.solar.completed_sites.forEach(s => {
+    nameMap[s.name] = { p: '已完工', ao: '已完工', capacity_mw: s.capacity_mw };
+  });
+  // 施工中
+  DATA.solar.construction_sites.forEach(s => {
+    nameMap[s.name] = { p: '施工中', ao: '施工中', capacity_mw: s.capacity_mw };
+  });
+  // 申設中
+  DATA.solar.admin_sites.forEach(s => {
+    nameMap[s.name] = { p: '申設中', ao: '申設中', capacity_mw: s.capacity_mw };
+  });
+  // 規劃中
+  DATA.solar.planning_sites.forEach(s => {
+    nameMap[s.name] = { p: '規劃中', ao: '規劃中', capacity_mw: s.capacity_mw };
+  });
+  // 解約/撤案（system stage 更細）
+  if (DATA.solar.cancelled_sites) {
+    DATA.solar.cancelled_sites.forEach(s => {
+      const ao = s.subcategory === '全案解約' ? '解約'
+               : s.subcategory === '案場撤案' ? '撤案'
+               : s.subcategory === '施工中下修' ? '案場施工中下修'
+               : '解約';
+      nameMap[s.name] = { p: '規劃中', ao, capacity_mw: s.capacity_mw };
+    });
+  }
+  
+  // 更新 baseRows
+  const wb = XLSX.utils.book_new();
+  const updatedRows = baseRows.map((row, ri) => {
+    if (ri === 0) return row; // header
+    const name = row[8]; // I欄
+    if (!name || name === 'NULL') return row;
+    const newData = nameMap[name];
+    if (!newData) return row;
+    
+    const newRow = [...row];
+    const changed = [];
+    if (newData.p !== String(row[15] || '').trim()) {
+      newRow[15] = newData.p;
+      changed.push(15);
+    }
+    if (newData.ao && newData.ao !== String(row[40] || '').trim()) {
+      newRow[40] = newData.ao;
+      changed.push(40);
+    }
+    // 裝置容量(MW) = M欄 = col12
+    if (newData.capacity_mw != null) {
+      const oldCap = parseFloat(row[12]) || 0;
+      const newCap = parseFloat(newData.capacity_mw) || 0;
+      if (Math.abs(newCap - oldCap) > 0.00001 && newCap > 0) {
+        newRow[12] = newData.capacity_mw;
+        changed.push(12);
+      }
+    }
+    newRow._changed = changed;
+    return newRow;
+  });
+  
+  const ws = XLSX.utils.aoa_to_sheet(updatedRows.map(r => r.slice ? r.slice(0, r.length) : r));
+  
+  // 標黃底
+  updatedRows.forEach((row, ri) => {
+    if (!row._changed || ri === 0) return;
+    row._changed.forEach(ci => {
+      const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
+      if (!ws[addr]) return;
+      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
+    });
+  });
+  
+  XLSX.utils.book_append_sheet(wb, ws, '太陽光電案場清單');
+  const date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  XLSX.writeFile(wb, `太陽光電案場清單_RiChi_${date}.xlsx`, { cellStyles: true });
+  console.log('太陽光電 RiChi 匯出完成');
+}
+
+function exportRiChiHydro(baseRows) {
+  if (!baseRows || !baseRows.length) { alert('請先匯入 RiChi 基底（小水力案場清單_RiChi）'); return; }
+  const nameMap = {};
+  DATA.hydro.sites.forEach(s => {
+    if (s.operation) nameMap[s.name] = s.operation;
+  });
+  
+  const wb = XLSX.utils.book_new();
+  const updatedRows = baseRows.map((row, ri) => {
+    if (ri === 0) return row;
+    const name = row[7]; // 案場名稱
+    if (!name || name === 'NULL') return row;
+    const newOp = nameMap[name];
+    if (!newOp) return row;
+    const newRow = [...row];
+    const changed = [];
+    if (newOp !== String(row[10] || '').trim()) {
+      newRow[10] = newOp;
+      changed.push(10);
+    }
+    newRow._changed = changed;
+    return newRow;
+  });
+  
+  const ws = XLSX.utils.aoa_to_sheet(updatedRows.map(r => r.slice ? r.slice(0, r.length) : r));
+  updatedRows.forEach((row, ri) => {
+    if (!row._changed || ri === 0) return;
+    row._changed.forEach(ci => {
+      const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
+      if (!ws[addr]) return;
+      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
+    });
+  });
+  
+  XLSX.utils.book_append_sheet(wb, ws, '小水力案場清單');
+  const date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  XLSX.writeFile(wb, `小水力案場清單_RiChi_${date}.xlsx`, { cellStyles: true });
+  console.log('小水力 RiChi 匯出完成');
+}
+
+
 function _str(v) { return v == null ? '' : String(v).replace(/^\s+|\s+$/g, ''); }
 // 安全取數字
 function _num(v) { 
@@ -6342,14 +6521,16 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="exportDataForDeploy()" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600">☁️ 同步至雲端</button>
             <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button>
             <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer">
-              📥 匯入填報基底<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
+              📥 各管理處回傳<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
             </label>
-            <label class="icon-btn no-print" style="background:#dcfce7;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer">
-              📤 匯入月報填報<input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
+            <label class="icon-btn no-print" style="background:#f0fdf4;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer" title="選擇 RiChi 兩個基底檔案">
+              📋 匯入 RiChi 基底<input type="file" accept=".xlsx" multiple onchange="importRiChiBase(event)" style="display:none">
             </label>
-            <label class="icon-btn no-print" style="cursor:pointer">📥 匯入<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
+            <label class="icon-btn no-print" style="cursor:pointer" title="匯入雙週報管考 Excel 更新案場資料">📥 匯入雙週報<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
+            <button class="icon-btn no-print" onclick="exportRiChiSolar(DATA._richiBase && DATA._richiBase.solar)" title="匯出太陽光電更新版 RiChi（需先匯入 RiChi 基底）" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;font-weight:600">☀️ 匯出太陽光電 RiChi</button>
+            <button class="icon-btn no-print" onclick="exportRiChiHydro(DATA._richiBase && DATA._richiBase.hydro)" title="匯出小水力更新版 RiChi（需先匯入 RiChi 基底）" style="background:#e0f2fe;border-color:#0284c7;color:#0369a1;font-weight:600">💧 匯出小水力 RiChi</button>
             <div class="flex items-center gap-2 rounded-xl p-1" style="background:#f1f5f9">
               <button class="tab-btn ${state.tab==='solar'?'active-solar':''}" onclick="setState({tab:'solar'})">
                 ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${solarCount} 案</span>
