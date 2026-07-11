@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-18",
+  "updated_at": "2026-07-02",
   "solar": {
     "summary": {
       "total_completed_cases": 135,
@@ -6840,7 +6840,7 @@
         "type": "圳路",
         "mgmt": "花蓮",
         "name": "圳路-花蓮管理處-太平渠幹線(神農段)",
-        "capacity_mw": 0.1980249999999999,
+        "capacity_mw": 0.198025,
         "progress": "容許使用籌辦中(台電併聯審查申請中)",
         "vendor": "中租迪和股份有限公司",
         "stage": "行政程序中",
@@ -12481,6 +12481,34 @@
         "handling": "改列113-114年規劃待重新招商",
         "project_name": "東圳第一中排等圳路太陽光電發電系統計畫",
         "facility_name": "圳路-屏東管理處-林文埤幹線"
+      },
+      {
+        "year": 115,
+        "subcategory": "全案解約",
+        "county": "嘉義縣",
+        "type": "圳路",
+        "mgmt": "嘉南",
+        "name": "八掌溪支線等3線圳路",
+        "capacity_mw": 5.16258,
+        "contract": "八掌溪支線等3線圳路(地面型)太陽光電發電系統計畫",
+        "vendor": "崑鼎綠能環保(股)公司",
+        "date": "115/02/09",
+        "reason": "未取得地方共識",
+        "handling": "改列115年規劃待重新招商"
+      },
+      {
+        "year": 115,
+        "subcategory": "全案解約",
+        "county": "臺南市",
+        "type": "農業水庫",
+        "mgmt": "嘉南",
+        "name": "烏山頭水庫(二期)",
+        "capacity_mw": 13.294,
+        "contract": "烏山頭水庫水面型第二期太陽光電發電系統計畫",
+        "vendor": "星曄綠能股份有限公司",
+        "date": "115/03/04",
+        "reason": "未取得地方共識",
+        "handling": "改列115年規劃待重新招商"
       }
     ]
   },
@@ -12632,23 +12660,6 @@
         "year": "108年",
         "operation": "營運中",
         "vendor": "經一綠能股份有限公司(原捷祥股份有限公司)",
-        "note": "",
-        "stage": "已完工/已完成",
-        "substage": "營運中",
-        "is_anomaly": false,
-        "anomaly_type": "",
-        "anomaly_level": ""
-      },
-      {
-        "mgmt": "臺中",
-        "county": "臺中市",
-        "township": "后里區",
-        "contract": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
-        "name": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
-        "capacity_kw": 60,
-        "year": "114年",
-        "operation": "完工併網-\r\n114/12/03向管理處重新申請竣工函，管理處114/12/26重新核發竣工函(農水臺中字第1148450327號)。\r\n115/05/05 重新申請同意備案中。",
-        "vendor": "恆水創電股份有限公司",
         "note": "",
         "stage": "已完工/已完成",
         "substage": "營運中",
@@ -12861,40 +12872,6 @@
         "anomaly_level": "red"
       },
       {
-        "mgmt": "臺中",
-        "county": "臺中市",
-        "township": "新社區",
-        "contract": "-",
-        "name": "白冷圳水底寮支線小水力發電試驗場所",
-        "capacity_kw": 1,
-        "year": "114年",
-        "operation": "機組待拆除",
-        "vendor": "阿丹馬克川流綠電股份有限公司",
-        "note": "",
-        "stage": "已完工/已完成",
-        "substage": "測試",
-        "is_anomaly": true,
-        "anomaly_type": "異常",
-        "anomaly_level": "red"
-      },
-      {
-        "mgmt": "南投",
-        "county": "台中市",
-        "township": "霧峰區",
-        "contract": "-",
-        "name": "阿罩霧第一圳導水路幹線(明玉)",
-        "capacity_kw": 50,
-        "year": "114年",
-        "operation": "機組已拆除",
-        "vendor": "明玉綠能股份有限公司",
-        "note": "",
-        "stage": "已完工/已完成",
-        "substage": "測試",
-        "is_anomaly": true,
-        "anomaly_type": "機組已拆除",
-        "anomaly_level": "red"
-      },
-      {
         "mgmt": "雲林",
         "county": "雲林縣",
         "township": "林內鄉",
@@ -12955,6 +12932,23 @@
         "year": "115年",
         "operation": "完成招標-\r\n115/04/30提送施工計畫書，115/06/05開工。",
         "vendor": "嘉德技術開發股份有限公司",
+        "note": "",
+        "stage": "推動中",
+        "substage": "推動中",
+        "is_anomaly": false,
+        "anomaly_type": "",
+        "anomaly_level": ""
+      },
+      {
+        "mgmt": "臺中",
+        "county": "臺中市",
+        "township": "后里區",
+        "contract": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
+        "name": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
+        "capacity_kw": 60,
+        "year": "114年",
+        "operation": "完工併網-\r\n114/12/03向管理處重新申請竣工函，管理處114/12/26重新核發竣工函(農水臺中字第1148450327號)。\r\n115/05/05 重新申請同意備案中。",
+        "vendor": "恆水創電股份有限公司",
         "note": "",
         "stage": "推動中",
         "substage": "推動中",
@@ -13296,40 +13290,6 @@
         "operation": "與太陽能光電廠商協商開發地點辦理後續招商事宜\r\n(114/01/21回覆)\r\n1. 鄰近土地多為私有地，土地取得相對困難，因此僅適合採用槽式機組設計。  \r\n2. 由於鄰近民宅且渠道兼具山洪排水功能，需進行進一步評估。",
         "vendor": "",
         "note": "與太陽能光電廠商協商開發地點辦理後續招商事宜\r\n(114/01/21回覆)\r\n1. 鄰近土地多為私有地，土地取得相對困難，因此僅適合採用槽式機組設計。  \r\n2. 由於鄰近民宅且渠道兼具山洪排水功能，需進行進一步評估。",
-        "stage": "推動中",
-        "substage": "潛力",
-        "is_anomaly": false,
-        "anomaly_type": "",
-        "anomaly_level": ""
-      },
-      {
-        "mgmt": "南投",
-        "county": "南投縣",
-        "township": "埔里鎮",
-        "contract": "",
-        "name": "南烘圳幹線(思源居宿後方)",
-        "capacity_kw": 0,
-        "year": "",
-        "operation": "113/06/14管理處提供潛力地點",
-        "vendor": "",
-        "note": "113/06/14管理處提供潛力地點",
-        "stage": "推動中",
-        "substage": "潛力",
-        "is_anomaly": false,
-        "anomaly_type": "",
-        "anomaly_level": ""
-      },
-      {
-        "mgmt": "南投",
-        "county": "南投縣",
-        "township": "埔里鎮",
-        "contract": "",
-        "name": "南烘圳幹線(鳳雛公園)",
-        "capacity_kw": 0,
-        "year": "",
-        "operation": "113/06/14管理處提供潛力地點",
-        "vendor": "",
-        "note": "113/06/14管理處提供潛力地點",
         "stage": "推動中",
         "substage": "潛力",
         "is_anomaly": false,
@@ -14000,23 +13960,6 @@
         "anomaly_level": ""
       },
       {
-        "mgmt": "宜蘭",
-        "county": "宜蘭縣",
-        "township": "冬山鄉",
-        "contract": "",
-        "name": "萬長春圳",
-        "capacity_kw": 252,
-        "year": "",
-        "operation": "1.經實際勘查，本案發電後退水管線銜接既有萬長春圳涵管工程，恐影響管壁結構安全之虞，經評估風險仍無法降低，因此廠商無法於同意備案展延期間修正計劃書，並取得同意。故114/09/16廠商提出終止契約(114續律字第0902號)，經114/09/23協商會議達成共識後，雙方同意終止契約，並於114/09/30依農水宜蘭字第1148124893號函辦理。\r\n2.待有廠商能針對管線耐久性、退水處理與灌溉維持提出具體可證的工程對策，再行評估是否辦理招商。",
-        "vendor": "",
-        "note": "1.經實際勘查，本案發電後退水管線銜接既有萬長春圳涵管工程，恐影響管壁結構安全之虞，經評估風險仍無法降低，因此廠商無法於同意備案展延期間修正計劃書，並取得同意。故114/09/16廠商提出終止契約(114續律字第0902號)，經114/09/23協商會議達成共識後，雙方同意終止契約，並於114/09/30依農水宜蘭字第1148124893號函辦理。\r\n2.待有廠商能針對管線耐久性、退水處理與灌溉維持提出具體可證的工程對策，再行評估是否辦理招商。",
-        "stage": "推動中",
-        "substage": "潛力",
-        "is_anomaly": false,
-        "anomaly_type": "",
-        "anomaly_level": ""
-      },
-      {
         "mgmt": "屏東",
         "county": "屏東縣",
         "township": "高樹鄉",
@@ -14052,12 +13995,12 @@
       }
     ],
     "summary": {
-      "total_cases": 92,
-      "total_capacity_kw": 31744.58,
-      "completed_cases": 13,
-      "completed_capacity_kw": 27186,
-      "in_progress_cases": 79,
-      "in_progress_capacity_kw": 4558.58
+      "total_cases": 87,
+      "total_capacity_kw": 31441.58,
+      "completed_cases": 12,
+      "completed_capacity_kw": 27126,
+      "in_progress_cases": 75,
+      "in_progress_capacity_kw": 4315.58
     },
     "mgmt": [
       {
@@ -14102,22 +14045,22 @@
       },
       {
         "name": "臺中",
-        "cases": 5,
-        "capacity_kw": 734,
-        "completed_cases": 3,
-        "completed_kw": 732,
+        "cases": 4,
+        "capacity_kw": 733,
+        "completed_cases": 2,
+        "completed_kw": 672,
         "in_progress_cases": 2,
-        "in_progress_kw": 2,
-        "anomaly_cases": 1
+        "in_progress_kw": 61,
+        "anomaly_cases": 0
       },
       {
         "name": "南投",
-        "cases": 7,
-        "capacity_kw": 630,
+        "cases": 4,
+        "capacity_kw": 580,
         "completed_cases": 0,
         "completed_kw": 0,
-        "in_progress_cases": 7,
-        "in_progress_kw": 630,
+        "in_progress_cases": 4,
+        "in_progress_kw": 580,
         "anomaly_cases": 1
       },
       {
@@ -14172,12 +14115,12 @@
       },
       {
         "name": "宜蘭",
-        "cases": 1,
-        "capacity_kw": 252,
+        "cases": 0,
+        "capacity_kw": 0,
         "completed_cases": 0,
         "completed_kw": 0,
-        "in_progress_cases": 1,
-        "in_progress_kw": 252,
+        "in_progress_cases": 0,
+        "in_progress_kw": 0,
         "anomaly_cases": 0
       },
       {
@@ -14203,6 +14146,6 @@
     ]
   },
   "meta": {
-    "source": "1150609 小水力盤點 + 1150618 太陽光電盤點彙整版"
+    "source": "1150702 小水力盤點 + 1150706 太陽光電盤點彙整版"
   }
 }
