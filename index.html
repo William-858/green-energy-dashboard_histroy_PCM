@@ -10,7 +10,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   .mgmt-table th, .mgmt-table td { padding: 6px 8px; border: 1px solid var(--border); }
   .mgmt-table td:first-child { font-weight: 500; padding-left: 12px; }
@@ -159,12 +159,6 @@
     footer { padding: 4px !important; margin-top: 6px !important; }
   }
 </style>
-<link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIui+sueUsOawtOWIqee9siDntqDog73nrqHogIPlhIDooajmnb8iLAogICJzaG9ydF9uYW1lIjogIue2oOiDveeuoeiAgyIsCiAgImRlc2NyaXB0aW9uIjogIuawtOWfn+Wei+i+sualree2oOiDveeuoeWItuiAg+aguOezu+e1sSIsCiAgInN0YXJ0X3VybCI6ICIuLyIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiIzA2NWY0NiIsCiAgInRoZW1lX2NvbG9yIjogIiMwNTk2NjkiLAogICJvcmllbnRhdGlvbiI6ICJhbnkiLAogICJpY29ucyI6IFsKICAgIHsKICAgICAgInNyYyI6ICJkYXRhOmltYWdlL3BuZztiYXNlNjQsaVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQU1BQUFBREFDQVlBQUFCUzNHd0hBQUFJSlVsRVFWUjRuTzNkejRwY1JSVEg4ZXBSUXNoYmhLeXljYVhrQ1pKMXdMVU1MZ1FYYmdRUkgwR0M0Q1lMd1lVTXJvV3NreWNRWGJuSlN2SVdJUVJrWEF4M2N1Zk8vVk9uNmxUVnFUcmZEd2lLMDkyM3EzNi9XOVY5dTJkT29ZRTc1MDh1V3p3dWJIdC84ZkpVK3pHclBDQ0JSNG9haFNqMkFJUWVta3FWUWZWT0NUMXEwQ3pEbWRZZEVYN1VvcG0xN0NZUmZMU1V1eHBrclFDRUg2M2xaakNwUGJrUGV2bm9RYzdOTWFqVG4vOW0zVDVsTlJEZklEWDhoQjRTcVdXUWxrRDB3OUx3RTNwb2tKWkJVb0xvSDVTRW4rQ2pCRWtSWWtzUTlTS1k4TU1DU2JaaU0zdllrdGc3SXZpb0tYWTFPRm9KZGxjQXdnK3JZak4zbE9Ic0s4R0VINjFvWkcrekFERm5mOEtQMW1JeXVKZmwxUUlRZnZRa3B3UkpXeURDRDJ0U00zbXJBRWRuZjhJUHE0Nnl1WmJ0czZNZkFFYXl6TGhvQzhUWkg5WkpNeHBkQU1LUFhraXllbDBBdGovd1lwNzFxQldBc3o5NkU1dlpqd3NmQjNhOGUzci8rdC92dm5qVDhFajhPZ3VCN1EvOG1USi91QVZpKzROZXhXUlg3ZGVpQUQyaUFIRHRiRy8vei9ZSHZkdkw4SjN6SjVlc0FIQ05Bc0ExQ2dEWEtBQmNvd0E3NWxkcVM3ajc0czMxUHlXVmZoNDlvd0FicHREMEhwNVJua2NwRkdERk1peTlobWVVNTFFU0g0WmJjZmZGbTlYd2FHeFYzajU4ZGZnejkxNC96bjZjdGJEemdidmJUbHdJMjZZUm9wakFINUVXZ3ZEZnRQZGI1TmdDN1ZnTFRldzI0dTNEVnlyaGw5NFg0WmVoQUFla0pkQU12dlMrQ2I4Y0JZZ1FXNEpTd1k5NUhNS2ZoZ0pFV29acC90OGx6L3BibG8rNWQzellSZ0VFcGxBdHc5L1NXZ2tJZnp3S0lHUXAvSk85bFFEN0tFQWlLK0dmV0R1ZVhsQ0FCRmJEWnZXNExPTktjQU1mZmZyNzV2Lzc3Kzh2S2g0SktJQlE2bGwyTC9SYlA1ZFNocmNQWDZsOGxNSUx0a0FDcGNPdmRUdTJRdkZZQVFwS0RmRGFmYkExS29NVklKTDByS29SL3B6N1l4V0lRd0VLMEE1LzZmdjFqQUpFNlBWczJ1dHgxMFFCbEpVK1M3TUs2S0lBaW1xRmt4TG9vUUJ3alFJYzZIMGYzZnZ4bDBZQmxOVGVsckFOMGtFQjRKcXJLOEd4WDJnZitUUDFqTUZOckFCd2pRTEFOVmRiSUMvTCtoN0c0Q1pXQUxoR0FaVFUvcmd5SDQvV1FRRU85UDd0cXQ2UHZ6UUtBTmNvZ0tKYTJ4SzJQM29vZ0xMUzRTVDh1aWhBaEY3MzBiMGVkMDI3QmRqN3d3TFlWdW9zemRsZjdpakRyQUNScEdkVDdiQks3NCt6Znh4WFY0SnJtMEtiODlGbHp2cGxIYTRBYklNK1NEMnJwb1k0OVhhYy9hL0VaSmNWUU9qZTY4ZEozN0thaDduazd3WWwvRElVb0FHMk5YWkV2UWhtRzNTVDFiT3MxZU5xSVRhenZBdVV5RnJZckIxUEw2SUx3Q3B3WmY2VlFpdWhteDlIN0ZjZVJ5YkpxbWdGOEY2Q0tWeVdTckFXZnM4bGtHYVVMVkNrWmFpV0phaGRoT1ZqN2gwZnRva0w0SEVWaVAwajFMVktzUFk0MHI5b1A2S1ViSjd1bkQrNVRIbXd5MGNQVW03V25kUy93RjdpTjdMRkZNenJYNHhQUFRFbkZ5Q0U4VXVnRVNhTklraFhGbThseU5tVlpCVWdoSEZMVUNwRU1ZWFEyRXA1S1VIdWxqeTdBQ0dNVjRKUndqUEs4OWlpOFhwVTVWMmcwVjRZTDBQU2EyaEdlUjVydERLbnNnTE1qYlFhdkh0NmY0alFqUEk4UXRBLzJhb1hJSVN4U2xEU2ZJc3lTa0JMS3JIVEtQSnAwT2xBS1FJMGxOeGlGLzA0OVB6QUtRTWthcjJ1clBaOUFNcUFJeTNlVEdueWhaalIzalZLTm5zTndKaTB3WWZoNEJvRmdHc1VBSzVSQUxoR0FlQmExcFhndjM3OVRmTllnQ1NmZmZWbDhtMVpBZUFhQllCclJUNE1CL1NDRlFDdVVRQzRSZ0hnR2dXQWF4UUFybEVBdUVZQjRCb0ZnR3Y4aWFTWlQ3NzdQUHMrL3ZucEQ0VWo2VmZ1R05ZZVA3ZFhnalhDSG12RVVvd3lmcTRLVUhQU3R2UmVodFpqcUQxK1dRVllEa2JyeVcwOU9Sb1lRN21jTVZOOURUQWZ2Rm9UcVRWaFdzZWJlenpUN1dzV1liUXhsRkJkQVk3a0RwQzFpWkt3Y3V4V2prTnE3N2h6anFWcUFWcHF2YldZOURSbVMxYkhzRmtCMXJTYVlDdVRrNnRsUVVZWlE0bWk3d0xWbU15Uko0M3hLNi82MjZDcGsrcDlvaVk1cFdBTWIzTjFIUUJZNHJOQWNJMEN3RFVLQU5jb0FGeWpBSENOQXNDMW9iNFE4L1dQMzZyZDF5OC8vS3gyWHozeE5vYmRYZ2ZRbktnalBVeWtGT04zcGFzQzFKeTBJNVluZFE5amVKUFpBbGlhS0FrTGt4b0M0eGVyZVFHMEpxckV3T1VjVzgySnREcUd1Y2RWWXd5YkZhQ1hjRTJzaGF5SGNNMVpHNzlKVmdHOHY1RHFiWnRoYlF3dGxNTGsyNkRXSm1yTDJuRmFLRVhQNHhkQzNURnNYb0JlSml2Vy9QblVtTWpSeGkrRUQ4K3B4dmcxS2NDSWs3YW0xQXJoZWZ4QzBDMUc4M2VCZ0piNExCQmNvd0J3alFMQU5Rb0ExeWdBWEtNQWNLMzVoYkM1aStmUDFPN3IvSnZ2MWU2ckY1cmpGNEtQTVd4K0hVQjcwdmFNT3FHTVlicXFCYWc1VVVkNm5FaEw0eGRDbjJPNFZLd0ExaVlyaHFVSjdYSDhRckExaGpGVUM1QXphU1VHVGl0RXRTWTE5M2kxajdPMzhVdVJWUUNOQWFvOU9GWkMxbk80ckp6b0xwNC95NzYvYWdXd2VCYm9iWnRoYlF3dGpKL0pBbGliS0lrUkpyVzEybU9ZTTE1cTF3RjZuN1RKMXZPb01ha2pqNkdGRTh1YTV0Y0JldFBqNng1ckxJMGhCWUJyZkJZSXJsRUF1RVlCNEJvRmdHc1VBSzVSQUxoR0FlRGEyZnVMbDZmV0J3RzA4UDdpNVlrVkFLNVJBTGhHQWVEYVdRaFhlNkhXQndMVU5HV2VGUUN1VVFDNGRsMEF0a0h3WXA1MVZnQzRSZ0hnMm8wQ3NBM0M2SlladjdVQ1VBS01haTNiYklIZzJtb0JXQVV3bXExTWI2NEFsQUNqMk1zeVd5QzR0bHNBVmdIMDdpakRoeXNBSlVDdllySWJ0UVdpQk9oTmJHYWpYd05RQXZSQ2tsWFJpMkJLQU91a0dSVy9DMFFKWUZWS05yUEN6RytXaGdVNUorV3M2d0NzQm1ndE40TnFBV1kxUUUxYUoxKzFLOEdzQnFoRk0ydkZRc3VLQUUybFRyQlZ6dHFVQVNscTdDcWFiRnNvQk5hMDJFYi9ENHRTZTZDd24zaDdBQUFBQUVsRlRrU3VRbUNDIiwKICAgICAgInNpemVzIjogIjE5MngxOTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciLAogICAgICAicHVycG9zZSI6ICJhbnkgbWFza2FibGUiCiAgICB9LAogICAgewogICAgICAic3JjIjogImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBZ0FBQUFJQUNBWUFBQUQwZU5UNkFBQVpkVWxFUVZSNG5PM2R2OG90MTNrSDREbkhCeUYwRjhLVkdsY092Z0twRnJnMmh4U0JGR2tDSnVRU2dnbWtjUkZJRVlUcmdHcnBDa1JjcFZFbGRCZENHTXhKY1RUV25IMzJuNW5aNjgrNzF2czhuWTE5dnBtMTFydmUzNnpaMy81ZUxCVHp3ZXZQM3ZTK0JvQ1ovZVdMcjE3MHZvWlpHTWlETkhtQW1JU0RZd3pXSFpvOXdOaUVndHNNeklhR0R6QTNnZUJuNlFkQzB3ZklLWHNZU0huem1qNEFXeG5EUUtvYjF2Z0J1Q2RURUpqK1JqVjlBTTZZUFF4TWUzTWFQd0FsekJvRXByc3BqUitBR21ZTEF0UGNqTVlQUUF1ekJJSGhiMExqQjZDSDBZUEFzQmV2OFFNUXdhaEI0R1h2Q3poRDh3Y2dpbEY3MGxDcFpkUkJCaUNIa1U0RGhyaFFqUitBa1l3UUJNSy9BdEQ4QVJqTkNMMHJkQUFZWVFBQjRKcm9QU3prRVVYMFFRT0FJeUsrRWdoM0FxRDVBekNiaUwwdFZDS0pPRUJudlBuTkwzdGZBc0JVWG56elhlOUxLQ0xTU1VDSUN4bTE4V3YwQUgyTkdnd2lCSUh1RnpCUzg5ZndBV0liS1JEMERnRmRmM2owNXEvaEE0d3RlaURvR1FLNi9lQ296Vi9UQjVoVDFERFFLd1IwK2FFUm03L0dENUJEeENEUUl3UTAvNEdSbXIrbUQ1QmJwRERRT2dRMC9XRlJtci9HRDhCV2xDRFFNZ1EwKzBFUm1yL0dEOEE5RVlKQXF4RFE1SWYwYnY0YVB3Qkg5QTRDTFVKQTlhOEMxdndCR0UzdjN0R2lkMVpOR0QyYmYrL0pBMkFPUFU4RGFwNEVWRHNCMFB3Qm1FSFBubEt6bDFaSkZyMmF2OFlQUUUyOVRnTnFuQVNFKzNQQVoybitBTlEyVTY4cEhnQjZQUDNQTkNFQXhOYWo1OVRvclVXUEZGbzNmNDBmZ0o1YXZ4SW8rU3FnMkFtQTVnOUFOcTE3VWNsZU8rUm5BRFIvQUtJWXRTY1ZDUUF0bi81SEhXZ0E1dFd5TjVYcXVVOEhBTTBmQU1ZTEFVOEZBTTBmQUg0MlVnZ1k0ak1BbWo4QW94aWxaNTBPQUsyZS9rY1pTQUJZdGVwZHovVGkwQ2NBbWo4QW80cmV3MDRGZ0JaUC85RUhEZ0FlYWRITHp2Ymt3d0ZBOHdlQS9hS0dnSEN2QURSL0FHWVRzYmNkQ2dDOS9zd3ZBSERmMFI0ZDZnUWdZa0lDZ0JLaTliamRBYUQyMDMrMGdRR0EwbXIzdWlPOU9zUUpnT1lQUUJaUmV0NnVBT0RkUHdDTVlXL1A3bjRDRUNVSkFVQXJFWHJmd3dCUTgray93Z0FBUUE4MWUrQ2UzdDM5QkFBQWFPOXVBUEQwRHdEMTlEd0Y2SElDb1BrRHdGdTllcUpYQUFDUTBNMEFVT3Y0MzlNL0FMeXJWbSs4MTh1ZEFBQkFRbGNEZ0tkL0FHaXI5U25BcXlvL0RRanB4ODgvZnZpLytmREw3eHRjQ2RCYnMxY0FudjRCNEw2V3ZmSzlBT0I3L3dGZ0x0ZDZ1dzhCQWtCQ1RRS0E0MzhBMktkVnozd25BRGorQjRBNVhmYjQ2aWNBbnY0QjRKZ1d2ZE5uQUFBZ0lRRUFBQkw2V3dDbzhmN2Y4VDhBbkZPamgyNTd2Uk1BQUVoSUFBQ0FoQVFBQUVpb1dnRHcvaDhBbmxPemw3NWNGbDhBQkFCWnJEM2ZLd0FBU0VnQUFJQ0VxZ1FBNy84Qm9JeGFQZFVKQUFBa0pBQUFRRUlDQUFBazlOS3ZBQUpBTGgrOC91eU5Fd0FBU0toNEFQQWJBQUJRVm8zZStxcjR2d2lFOWVHWDMvZStCQ0FJcndBQUlDRUJBQUFTRWdCSTVjZlBQKzU5Q1FSbWZaQ0pBRUFhNitadWsrY2E2NE5zQkFCU3VOelViZkpzV1I5a0pBQXd2VnVidVUyZVpiRSt5RXNBWUdxUE5uR2JmRzdXQjVrSkFFeHI3K1p0azgvSitpQTdBWUFwSGQyMGJmSzVXQjhnQURDcE05OTRaNVBQNGN3OCt3WkZadVNyZ0puV2gxOStmK3BKYjZiTi9vZFB2bjc2My9qbzIwOExYRWtNbWovODdFWHBQd2ZzandFUlRaWk52MFN6MzJ2RVVKQmxIVEN2Rjk5OFYvYmZFd0RJWU1iTnYyWERmeVI2SUpoeC9zbEhBSUNUUm04Q2tScitJNUVDd2VqekRxdlNBY0NIQUVsajFBOEcvdkRKMTBNMS8yV0pjODJhUDl6bUJJQjBSbWdLRVpwbmFhMVBCVWFZWnpqQ0NRQThLZkpKUUpRbjV4cGEzcHZtRDQ4SkFLUVVMUVRNM1BndjFiNVh6Ui8yRVFCSUswSUl5TlQ0TDlXNGQ4MGY5aE1BU08zbzVsK3FXV1J1L0pkS2prV3YrWVFSQ1FDa3Q3Y0psR3ordks5MUNORDh5VTRBZ09WeE15alJMRHoxUDFacWpGck1KNHhPQUlDZjNHb0twWm8vKzlVTUFaby92Q1VBd01abGM5RDgrNmtSQWpSLytKa0FBQmZXSnZGc3MzRGsvN3dTWTFocVBtRTJBZ0JjVWFMNVUwNnBFQUQ4VEFDQXdqVC9Pb3dybENVQVFFR2FWRjNHRjhvUkFLQVF6YWtONHd4bENBQlFnS2JVbHZHRzV3a0E4Q1ROcUEvakRzOFJBT0FKbWxCZnhoL09Fd0RnSk0wbkJ2TUE1d2dBY0lLbUU0djVnT01FQURoSXM0bkp2TUF4QWdBY29NbkVabjVnUHdFQUFCSjYxZnNDWUJRalAxMys0dGQvT3Z6LytldWZmMWZoU3VyNzRaT3ZsNCsrL2JUM1pVQjRBZ0RzTUZyelA5UHdILzBiSXdVQ0lRQWVFd0RnZ1ZHYWY0bW12L2ZmSHlFTUNBRndud0FBQTZ2ZDlQZjgzQkhDQVBBK0FRRHVpUHIwMzZ2eFg3TmVTOFFnNEJRQWJ2TmJBSENENW45TTFPdUtPby9RbXhNQUdFVFVCcnNWK1RRQWVKY1RBTGdpMmxQakNNMS9LOXIxUnB0UGlNQUpBQVFXclpFZTRUUUFZbk1DQUJlaVBDMk8zUHkzb3R4SGxIbUZLQVFBQ0NoSzB5eGx0dnVCR1FnQXNCSGhLWEhXWmhuaHZpTE1MMFFoQUVBZ0VacGtUYlBmSDR4RUFJQ2Y5SDQ2ek5JY2U5OW43M21HS0FRQUNLQjNVMnd0Mi8xQ1JBSUFkSmExR1dhOWI0aENBSURGc1hBMjVoc0VBT2dxKzFOdzl2dUhuZ1FBMHV2MU5LajV2ZFZySEp3Q2tKMEFBQUFKQ1FEUWdhZi9keGtQYUU4QWdNWTB1K3VNQzdRbEFKQ2E5OEM1bVg4eUV3Q2dJVSs1OXhrZmFFY0FBSUNFQkFBQVNFZ0FJSzNXNzM4ZGIrL1RlcHg4RG9Dc0JBQUFTRWdBQUlDRUJBQm93UEgvTWNZTDZoTUFBQ0FoQVlDVWZQQ0xMZXVCakFRQUFFaElBSURLdk04K3g3aEJYUUlBQUNUMHF2Y0ZrTWVQbjM5YzlkLy84TXZ2cS83N3NMS1dtWUVUQUFCSVNBQUFnSVFFQUFCSVNBQUFnSVFFQUFCSVNBQUFnSVFFQUFCSVNBQUFnSVI4RVJETitISVRabUV0TXdNbkFBQ1FrQUFBbGYzMXo3L3JmUWxETW01UWx3QUFBQWtKQUtUMDBiZWY5cjRFQXJFZXlFZ0FBSUNFQkFCb3dQdnNZNHdYMUNjQUFFQkNBZ0FBSkNRQWtGYnJEMzQ1MXQ2bjlUajVBQ0JaQ1FBQWtKQUFBQUFKQ1FEUWtOY0E5eGtmYUtkNEFIanh6WGVsLzBtb3h2dmYzTXcvbzZqUlc1MEFRR09lY3E4ekx0Q1dBQUFkYUhidk1oN1FuZ0FBQUFrSkFLVFg2ejJ3cDk2M2VvMkQ5LzlrSndCQVI5bERRUGI3aDU2cUJBQy9DY0JvUEEzbVlyNFpTYTJlNmdRQU9zdjZGSnoxdmlFS0FRQUN5TllNczkwdlJDUUF3RTk2SHd0bmFZcTk3N1AzUEVNVTFRS0F6d0hBY2IyYlkyMnozeCtVVnJPWE9nR0FqUWhQaDdNMnlRajNGV0YrSVFvQkFBS0swQ3hMbXUxK1lBWUNBRnlJOHBRNFM5T01jaDlSNWhXaWVGWHpIMy94elhmTG05LzhzdWFQZ0ttdHpmTVh2LzVUNXlzNUxrcmpoMUhWL2l5ZEV3QzRJdHJUNG1qTk5OcjFScHRQaUtEcUNRQlF6Z2luQWRFYVAzQmI5Uk1Bdnc3SXFLSStOVVp0c2xHdksrbzh3ajB0ZXFjVEFMampvMjgvWFg3NDVPdmVsL0dlU0tjQlVSdi9zbWorY0UrVEFPRERnRkRIdHZtMkRBT1JtejZNcnRYSnVSTUFlQ0RxS2NDbDJtRmd0S2J2NlIvdUV3QmdoMUZDd09xeVdaOEpCS00xL0MzTkh4NTc4Y0hyejk2MCttRmVBekM2a1VKQVZwby9JMnY1d1huZkF3QUFDVFVOQUg0bGtORjV1b3pOL0RDeTFqM1NDUUFjcE1uRVpGN2dtT1lCd0NrQU05QnNZakVmaks1SGIzUUNBQ2RwT2pHWUJ6aW5Td0J3Q3NBc05KKytqRDh6Nk5VVHU1MEFDQUhNUWhQcXc3Z3pnNTY5MENzQUtFQXphc3Q0dy9PNkJnQ25BTXhFVTJyRE9ET0wzajJ3K3dsQTd3R0FralNudW93dnM0alErN29IQUppTkpsV0hjWVd5UWdTQUNFa0l0bjc4L09Pbi92K2FWVm5QanVlejh3a2xSZWw1VGY4WTBDUCtXQkFSYkp2RmgxOSsvL1MvNXc4SW5WY2lTSldlVDNoR2xPYS9MRUZPQUZhUkJvYWNMcDhVU3p3NU9nMDRwM1R6di9hZm9hVm9QUzVVQUlDZWJqVUhJYUM5R3MzLzBYOFAyWVI2QmJEeUtvRFc5alNGVXNmSFhnbmNWaW9vdFp4UDJDUGEwLyt5QkQwQmlEaFF6R3Z2RTJHcEowZW5BZGUxYlA1SC9uZndyS2c5TGVRSndNcEpBTFdkYVFJbG54eWRCcFFOUkwzbkV5NUZiZjdMRWp3QUxJc1FRRDJSbWtYR0lGRHJKQ1RTdkpKYjVPYS9MQU1FZ0dVUkFpZ3ZhcFBJRUFSYXZBS0pPci9rRWIzNUw4c2dBV0JaaEFES0dhRTV6QmdFV24vMllZUjVaazRqTlA5bEdTZ0FMSXNRd1BOR2JBb2poNEhlSDNnY2NiNFoyeWpOZjFrR0N3RExJZ1J3M3VqTllLUWcwTHZ4YjQwKzc0eGpwT2EvTEFNR2dHVVJBamh1eGlZUUtSQkVhdmpYekRqL3hESmE4MStXUVFQQXNnZ0I3SmRsODI4WkNLSTMvR3V5ckFQYUc3SDVMOHZBQVdCWmhBQWV5NzdwbHdnRkl6YjdXN0t2QjhvYnRma3Z5K0FCWUNVSWNJM05ubXVzQzBvWXVmR3ZRbjRWOEZFelRBUmwyZVM1NWN3OCs5cGd0bWJwT1ZNRWdHV1paMElvNCtnbXIvbm5ZbjF3MWt5OVpvcFhBSmU4RW1EbHI4SnhqL1hCWGpNMS90VTBKd0JiTTA0VTV6emF2RzN1dVZrZjdERnJUNW55QkdETGFRRExjdjFKeitiT3l2cmdtbGtiLzJyS0U0Q3QyU2VRZlM0M2M1czdXOVlIbHpMMGp1bFBBTGFjQnZEajV4L2IzTG5KK2lCRDQxK2xDZ0FyUVFDQXJVeU5mL1dxOXdYMHNFNjBJQUNRVzhiR3Ywb1pBRmJiaVJjR0FITEkzUFMzVWdlQUxhY0NaT0QzM3NsTTQzK1hBSERCcVFEQVBEVDkyd1NBT3k0WGprQUFFSnVHdjU4QWNJQkFBQkNMaG4rZUFQQ0VXd3RQTUFBb1M2TXZUd0Nvd0VJbHJCMGZBclIrSVlmcHZ3b1lBSGlmQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNRa0FBSkNRQUFBQUNiMzQ0UFZuYjNwZkJBRFExcXZlRi9ESS8vN1hmL2UrQkFBNDdPLys0ZTk3WDhKZFhnRUFRRUlDQUFBa0pBQUFRRUlDQUFBa0pBQUFRRUlDQUFBa0pBQUFRRUsrQ0FnQUVuSUNBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtKQUFBQUFKQ1FBQWtOQ3IzaGNBcmYzcTk3K3QvalArNzkvL3AvclBnR2pVMWxoZWZQRDZzemU5THdKS2E3RVJuV1VEWTJScWF4NENBTk9JdkRIZFlzTmlCR3ByVGdJQXd4cHhVM3JFcGtVRWFpc0hBWUN3WnR5RW5tVVRvd1MxOWI2TXRTVUFFSXFOYVorTW14WFBVVnY3WktvdEFZQVFiRTduWmRxd09FNXRuVGQ3YlFrQWRHTmpLbXYyellyOTFGWlpzOWFXQUVCek5xZTZadDJzZUV4dDFUVmJiUWtBVkdkVDZtdTJUWXVmcWEyK1JxOHRBWUFxYkV4eGpiNXBaYWUyNGhxdHRvWUlBTC82L1crSEc5aHNJbTlLRWRhTzhlRXNhK2MrNDNQZU1BRmdLL3FnWmhHMThFWllIOGFPZTZ5UDh5S05YZlR4R2pJQVhJbyt5TE9JVkZpWFJsNER4aFZyb0k3ZTR4cDk3TUlIZ0tNVEdIM0FSOU83Z0M1bG1sOWpQemZ6MjQrL1d2aldkQUhnbWhFbUlvSm9HOUlxKy94Rm5aZGxNVGQ3UlozRDdQTlhjMTVHR05zVUFXQTF3b1QwWUhNYWg3a2FpL2thUittNUdtR01Vd1dBclJFbXB5WWIwOWlpenQreW1NT29jNU45WHZZcU5YOGpqSGZhQUxBYVlaSktpclE1WlJ2NzJpTE43YkxrbTk5STQ1OXQ3R3M3TTdjanpFSG9BTkN6b0VhWXZGc2liVVNYUmg3WGtWZ0RkUmhYOXF5QlVlWkNBTmhoaE1tTU1sYVhSaGk3REt5UDg0d2Q5MXhiSDZQTWpRQndRb1RKalRvMnl4SmpmTGd2NnZxSnNIYWlqczJ5eEJnZjdodnBtMnREQjRCTGtRc3pzMUVXTzdlcHJaalVGalVORlFDMmJGaDkyWmptcGJiNlVsdTBNbXdBdUdUVHFzdW1sSmZhcWt0dDBjczBBV0Jsc3lyTDVzUktiWldsdHVodHVnQ3dzbGs5eCtiRUxXcnJPV3FMS0tZTkFGczJySDFzVEJ5bHR2WlJXMFNVSWdDc2JGYlgyWng0bHRxNlRtMFJXYW9BOE1pTW01Z05pQWpVRnNRakFOd3g0cVpsVTJJRWFndjZFd0IyaXJ4aDJaZ1ltZHFDUGdTQVF2elZRcWhEYlVFZEFnQUFKUFN5OXdVQUFPMEpBQUNRa0FBQUFBa0pBQUNRa0FBQUFBa0pBQUNRa0FBQUFBa0pBQUNRa0FBQUFBa0pBQUNRa0FBQUFBa0pBQUNRMEt2ZUY4QWMvdkhmL3JuNnovalBmLzJQNmo4RG9sRmIxT0t2QWJKYmk0M29MQnNZSTFOYjlDQUFjRmZraldrdkd4Z1JxUzE2RXdCNHh3eWIwajAyTEhwUlcwUWpBREQ5eG5TUFRZdWExQmFSQ1FBSlpkNlU3ckZoOFN5MWRaM2Fpa2tBU01DbWRJNU5pMGZVMWpscUt3WUJZREkycERwc1dLaXRPdFJXUHdMQUpHeE83ZG00Y2xCYjdhbXROZ1NBZ2RtWTRyQmh6VVZ0eGFHMjZoRUFCbVJ6aXN0bU5UYTFGWmZhS2s4QUNDcjZSaFNoR0kwUloxZzNqeG1qSEFTQVlLSVczbWdGRjNVY1Y2T041d3lpcm9uUjFrTFVjVnlOTnA0OUNRQUJSQzJvbVFySkdPZGszdXN6eHVNU0FEcUtWamhaQ2liYXVLK3lqSDhMMGVZNHk5eEdHL2RWbHZFL1NnRG9JRktSS0l4WTg3RXM1dVFaa2ViU1BNYWFqMlV4SjVjRWdBWWlGWUVDdU05Y2pjVjhqY05jeFNNQVZHS3h6OEU4eG1OTzVtQWUreE1BQ29tMG1GZFpGM1VOMGVZMzA5eEdHL3RseVRYK3RVV2IzMHh6S3dDY0ZHM1Jyakl0M2w0aXp2MU04eDV4ZkpkbHJqR09LdUxjenp6dkFzQk9FUmZtMXN5TE5LcW9hMkswdFJCMUhGZWpqZWNNb3E2SjJkYUNBTEFSZGRHdFpsdDhNNG04ZGlLc204ampzeXd4eG9qcklxK2QwZGROK0FBUWVmSmJHWDJSWldjTng2VzJ4aGE5dHFLdnIxZTlMNERyb2k4Yzlsdm5NdnBtbFlYYW1vZmFlbzRBRUl6TmFWN2J1YlZodGFlMjVxVzJ6dkVLb0NNYkVqT3Y3NTdVRnIxcmE0UTE2QVNnc1JFV0JlMWNXdys5TjY1UnFTMjIxTlpqQWtCbE5pV09jcHk1ajlyaUtMWDFMZ0dnQWhzVHBWeXVwZXlibHRxaUZMVWxBQlJoVTZLVmJFOHdhb3RXc3RYV3N2Z1E0Q2sySlNLS1dDdEhxUzBpT2xwYm82eGpKd0EzakRLQnNCcmxDVVp0TVpwUmF1dW8xQUhBUnNTc0hxM3QycHVZMm1KV3ZXdXJwUEN2QUFDQThsNzJ2Z0FBb0QwQkFBQVNFZ0FBSUNFQkFBQVNFZ0FBSUNFQkFBQVNFZ0FBSUNFQkFBQVNFZ0FBSUNFQkFBQVNFZ0FBSUNFQkFBQVNTdjNYQUVmMnhSLy9VUDFudlA2bmY2bitNeUFhdFVVVy9ocGdZQzAyb3Ixc1dNeEViWUVBMEYya2plZ0lteGJScVMyNFR3RG9ZTlNOYVM4YkdMMm9MZGhQQUdoZzlrM3BIaHNXTmFrdE9FOEFxQ1R6eHZTSWpZdG5xSzNiMUJaSENBQ0YySlNPczFteGg5bzZUbTJ4aHdCd2trMnBMQnNXSzdWVmx0cmlGZ0ZnSjV0U0d6YXJmTlJXRzJxTFN3TEFIVGFtdm14WTgxSmJmYWt0bGtVQWVJZE5LVGFiMXJqVVZteHFLNmYwQVdDVWphbFhnVVlkSHh0V2ZGSFh6aVcxOVM2MWxVZTZBQkMxNkpZbGZ1RVpPKzZ4UHM0emR2U1FJZ0JFTGE2WkNpdlNHTTgwcnRGRm12ZXRtZFpBcERHZWFWeVpNQUJFS3BacnNoUlFwSG5JTXVhMVJaclRhN0xNYzZSNXlETG1zNW9tQUVRcWlxM3NCUkp0WHJMUHh4blI1bkNWZlM2anpVdjIrUmpSMEFFZ1dnR3NGTUw3ek5WWXpOYzR6QlZuRFJrQW9pMTRDLzJZYVBPM01vL3g1c2FjSEJOdC9sYm1NYWFoQWtDVXhXMHhseEZsUG0vSk5NOVI1aUxUbU5jVVpUNXZNYzh4aEE0QVVSYXh4ZHBPbERtL05Oc2FpRExPczQxclpGSG0vTkpzYStDTFAvNWhtSHNTQUc0WVpRSm5aOU02SitxNExVdjhzY3NpNmhxSnZqNzJqRnYwZTFnSkFEOFpaY0t5aTdwcFhlcXhucUtPamRvYVE5VDFjMm1FMmhwbHpZY09BTXRTZDFHT01rbGNOOHFHbFpIYUdwdmFldDRJTmZDcTl3VzBOTUtFc04vbGZOcTArbEZiYzFGYk9hUUlBRGFuSExiemJNTnFRMjNsb0xibU5IVUFzRG5sNVFtbUxyV1ZsOXFheDNRQndNYkVOWjVnbnFlMnVFWnRqU3Y4aHdDWFphNWZ1eUFlbTlaOWFvdXpzdGRXOU5vWjhnUWcrcUF5Rms4d1AxTmJsS1MyWWhzbUFOaVlhQ0hqKzAyMVJRc1pheXU2SVY0QlFBU2pibGdhUE5HcHJUNEVBQ2dreWlZMitxWUVsOVJXSFFJQU5GQjdBNXR0WTRLOTFOWjVBZ0FBSlBTeTl3VUFBTzBKQUFDUWtBQUFBQWtKQUFDUWtBQUFBQWtKQUFDUWtBQUFBQWtKQUFDUWtBQUFBQWtKQUFDUWtBQUFBQWtKQUFDUTBNdS9mUEhWaTk0WEFRQzA4NWN2dm5yaEJBQUFFaElBQUNBaEFRQUFFaElBQUNBaEFRQUFFaElBQUNDaGw4dnk5dGNCZWw4SUFGRGYydk9kQUFCQVFnSUFBQ1FrQUFCQVFnSUFBQ1QwdHdEZ2c0QUFNTGR0cjNjQ0FBQUpDUUFBa0pBQUFBQUp2Uk1BZkE0QUFPWjAyZU9kQUFCQVFnSUFBQ1QwWGdEd0dnQUE1bkt0dHpzQkFJQ0VCQUFBU09ocUFQQWFBQURtY0t1bk93RUFnSVJ1QmdDbkFBQXd0bnU5M0FrQUFDUWtBQUJBUW5jRGdOY0FBRENtUnozY0NRQUFKUFF3QURnRkFJQ3g3T25kVGdBQUlLRmRBY0FwQUFDTVlXL1BkZ0lBQUFudERnQk9BUUFndGlPOTJna0FBQ1IwS0FBNEJRQ0FtSTcyYUNjQUFKRFE0UURnRkFBQVlqblRtMCtkQUFnQkFCREQyWjdzRlFBQUpIUTZBRGdGQUlDK251bkZUZ0FBSUtHbkFvQlRBQURvNDlrZS9QUUpnQkFBQUcyVjZMMUZYZ0VJQVFEUVJxbWU2ek1BQUpCUXNRRGdGQUFBNmlyWmE0dWVBQWdCQUZCSDZSNWIvQldBRUFBQVpkWG9yVDREQUFBSlZRa0FUZ0VBb0l4YVBiWGFDWUFRQUFEUHFkbExxNzRDRUFJQTRKemFQYlQ2WndDRUFBQTRwa1h2YlBJaFFDRUFBUFpwMVRPYi9SYUFFQUFBOTdYc2xVMS9EVkFJQUlEcld2Zkk1dDhESUFRQXdMdDY5TVl1WHdRa0JBREFXNzE2WXJkdkFoUUNBTWl1WnkvcytsWEFRZ0FBV2ZYdWdkMy9Ga0R2QVFDQTFpTDB2dTRYc1BYQjY4L2U5TDRHQUtnbFF1TmZkVDhCMklvME1BQlFVclFlRnlvQUxFdThBUUtBWjBYc2JlRXVhTXNyQVFCR0ZySHhyOEtkQUd4RkhqZ0F1Q2Q2RHdzZEFKWWwvZ0FDd0tVUmVsZjRDOXp5U2dDQXlFWm8vS3RoTG5STEVBQWdrcEVhL3lyOEs0QnJSaHhvQU9ZMGFrOGE4cUszbkFZQTBNT29qWDgxOU1WdkNRSUF0REI2NDE5TmNSTmJnZ0FBTmN6UytGZFQzY3lXSUFCQUNiTTEvdFdVTjdVbENBQnd4cXlOZnpYMXpWMFNCZ0M0Wi9hbXY1WG1ScmNFQVFDMk1qWCtWYm9idmlRTUFPU1VzZWx2cGI3NVM4SUF3Tnl5Ti8wdEEzR0hRQUF3TmczL05nTnprRkFBRUpObWY0ekJLa2c0QUtoTGt5L24vd0Y3TE9xdXlXKyswZ0FBQUFCSlJVNUVya0pnZ2c9PSIsCiAgICAgICJzaXplcyI6ICI1MTJ4NTEyIiwKICAgICAgInR5cGUiOiAiaW1hZ2UvcG5nIiwKICAgICAgInB1cnBvc2UiOiAiYW55IG1hc2thYmxlIgogICAgfQogIF0KfQ==">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="綠能管考">
-<link rel="apple-touch-icon" href="data:image/png;base64,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">
-<meta name="theme-color" content="#059669">
 </head>
 <body>
 <div id="app"></div>
@@ -377,25 +371,24 @@ function exportRiChi() {
 }
 
 function exportRiChiSolar(baseRows) {
-  if (!baseRows || !baseRows.length) { alert('請先匯入 RiChi 基底（太陽光電案場清單_RiChi）'); return; }
   // 建立 mapping：案場名稱 → {p, ao}
   const nameMap = {};
   
   // 已完工
   DATA.solar.completed_sites.forEach(s => {
-    nameMap[s.name] = { p: '已完工', ao: '已完工', capacity_mw: s.capacity_mw };
+    nameMap[s.name] = { p: '已完工', ao: '已完工' };
   });
   // 施工中
   DATA.solar.construction_sites.forEach(s => {
-    nameMap[s.name] = { p: '施工中', ao: '施工中', capacity_mw: s.capacity_mw };
+    nameMap[s.name] = { p: '施工中', ao: '施工中' };
   });
   // 申設中
   DATA.solar.admin_sites.forEach(s => {
-    nameMap[s.name] = { p: '申設中', ao: '申設中', capacity_mw: s.capacity_mw };
+    nameMap[s.name] = { p: '申設中', ao: '申設中' };
   });
   // 規劃中
   DATA.solar.planning_sites.forEach(s => {
-    nameMap[s.name] = { p: '規劃中', ao: '規劃中', capacity_mw: s.capacity_mw };
+    nameMap[s.name] = { p: '規劃中', ao: '規劃中' };
   });
   // 解約/撤案（system stage 更細）
   if (DATA.solar.cancelled_sites) {
@@ -404,7 +397,7 @@ function exportRiChiSolar(baseRows) {
                : s.subcategory === '案場撤案' ? '撤案'
                : s.subcategory === '施工中下修' ? '案場施工中下修'
                : '解約';
-      nameMap[s.name] = { p: '規劃中', ao, capacity_mw: s.capacity_mw };
+      nameMap[s.name] = { p: '規劃中', ao };
     });
   }
   
@@ -427,15 +420,6 @@ function exportRiChiSolar(baseRows) {
       newRow[40] = newData.ao;
       changed.push(40);
     }
-    // 裝置容量(MW) = M欄 = col12
-    if (newData.capacity_mw != null) {
-      const oldCap = parseFloat(row[12]) || 0;
-      const newCap = parseFloat(newData.capacity_mw) || 0;
-      if (Math.abs(newCap - oldCap) > 0.00001 && newCap > 0) {
-        newRow[12] = newData.capacity_mw;
-        changed.push(12);
-      }
-    }
     newRow._changed = changed;
     return newRow;
   });
@@ -448,7 +432,7 @@ function exportRiChiSolar(baseRows) {
     row._changed.forEach(ci => {
       const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
       if (!ws[addr]) return;
-      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
+      ws[addr].s = { fill: { fgColor: { rgb: 'FFFF00' }, patternType: 'solid' } };
     });
   });
   
@@ -459,7 +443,6 @@ function exportRiChiSolar(baseRows) {
 }
 
 function exportRiChiHydro(baseRows) {
-  if (!baseRows || !baseRows.length) { alert('請先匯入 RiChi 基底（小水力案場清單_RiChi）'); return; }
   const nameMap = {};
   DATA.hydro.sites.forEach(s => {
     if (s.operation) nameMap[s.name] = s.operation;
@@ -488,7 +471,7 @@ function exportRiChiHydro(baseRows) {
     row._changed.forEach(ci => {
       const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
       if (!ws[addr]) return;
-      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
+      ws[addr].s = { fill: { fgColor: { rgb: 'FFFF00' }, patternType: 'solid' } };
     });
   });
   
@@ -6527,16 +6510,18 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="exportDataForDeploy()" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600">☁️ 同步至雲端</button>
             <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button>
             <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer">
-              📥 各管理處回傳<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
+              📥 匯入填報基底<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
             </label>
             <label class="icon-btn no-print" style="background:#f0fdf4;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer" title="選擇 RiChi 兩個基底檔案">
               📋 匯入 RiChi 基底<input type="file" accept=".xlsx" multiple onchange="importRiChiBase(event)" style="display:none">
             </label>
+            <label class="icon-btn no-print" style="background:#dcfce7;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer">
+              📤 匯入月報填報<input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
+            </label>
             <label class="icon-btn no-print" style="cursor:pointer" title="匯入雙週報管考 Excel 更新案場資料">📥 匯入雙週報<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
-            <button class="icon-btn no-print" onclick="exportRiChiSolar(DATA._richiBase && DATA._richiBase.solar)" title="匯出太陽光電更新版 RiChi（需先匯入 RiChi 基底）" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;font-weight:600">☀️ 匯出太陽光電 RiChi</button>
-            <button class="icon-btn no-print" onclick="exportRiChiHydro(DATA._richiBase && DATA._richiBase.hydro)" title="匯出小水力更新版 RiChi（需先匯入 RiChi 基底）" style="background:#e0f2fe;border-color:#0284c7;color:#0369a1;font-weight:600">💧 匯出小水力 RiChi</button>
+            <button class="icon-btn no-print" onclick="exportRiChi()" title="匯出更新版 RiChi Excel（需先匯入填報基底）" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;font-weight:600">📊 匯出 RiChi</button>
             <div class="flex items-center gap-2 rounded-xl p-1" style="background:#f1f5f9">
               <button class="tab-btn ${state.tab==='solar'?'active-solar':''}" onclick="setState({tab:'solar'})">
                 ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${solarCount} 案</span>
@@ -7638,71 +7623,6 @@ ${styleTags}
     </div>
   </div>
   <div class="print-cards">${cardsHtml}</div>
-
-<script>
-// === PWA 安裝提示 ===
-let _deferredPrompt = null;
-
-// 攔截 Android Chrome 的安裝提示事件
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  _deferredPrompt = e;
-  // 自動觸發安裝
-  setTimeout(() => {
-    if (_deferredPrompt) {
-      _deferredPrompt.prompt();
-      _deferredPrompt.userChoice.then(choice => {
-        _deferredPrompt = null;
-      });
-    }
-  }, 1500);
-});
-
-// 註冊 Service Worker（讓 PWA 條件成立）
-if ('serviceWorker' in navigator) {
-  const swCode = `
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => clients.claim());
-self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
-  `.trim();
-  const blob = new Blob([swCode], { type: 'application/javascript' });
-  const swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl, { scope: './' }).catch(() => {});
-}
-
-// iOS：偵測到 Safari 且未安裝時，顯示提示
-window.addEventListener('load', () => {
-  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isStandalone = window.navigator.standalone;
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  if (isIos && !isStandalone && isSafari) {
-    setTimeout(() => {
-      const banner = document.createElement('div');
-      banner.id = 'ios-install-banner';
-      banner.style.cssText = [
-        'position:fixed;bottom:0;left:0;right:0;z-index:99999',
-        'background:#065f46;color:white;padding:16px 20px',
-        'display:flex;align-items:center;gap:12px',
-        'box-shadow:0 -4px 20px rgba(0,0,0,0.3)',
-        'font-family:system-ui,sans-serif;font-size:14px'
-      ].join(';');
-      banner.innerHTML = `
-        <img src="data:image/png;base64,${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}" 
-             style="width:44px;height:44px;border-radius:10px;flex-shrink:0"
-             onerror="this.style.display='none'">
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:15px">加入主畫面</div>
-          <div style="opacity:0.85;margin-top:2px">點下方 <span style="font-size:16px">⎙</span> 分享按鈕，選「加入主畫面」即可安裝</div>
-        </div>
-        <button onclick="document.getElementById('ios-install-banner').remove()" 
-                style="background:rgba(255,255,255,0.2);border:none;color:white;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:18px;flex-shrink:0">✕</button>
-      `;
-      document.body.appendChild(banner);
-    }, 1000);
-  }
-});
-</script>
-
 </body>
 </html>`;
   
