@@ -345,7 +345,7 @@
   requestAnimationFrame(animFast);
 
   // 頁面 load 後跑到 100% 並淡出
-  window.addEventListener('load', function() {
+  window.addEventListener('app-ready', function() {
     setTimeout(function() {
       var s2 = null;
       function animFinish(ts) {
@@ -7904,11 +7904,16 @@ function render() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // 先讓瀏覽器繪製載入動畫
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   // 1. 先嘗試從伺服器抓取最新「儀表板資料」(data.json)
   try { await fetchDataFromServer(); } catch(e) { console.warn('data.json 載入失敗', e); }
   // 2. 再抓輿情資料
   try { await fetchOpinionsFromServer(); } catch(e) { console.warn('opinions.json 載入失敗', e); }
+  await new Promise(r => requestAnimationFrame(r));
   render();
+  // 通知載入動畫可以完成了
+  window.dispatchEvent(new Event('app-ready'));
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 </script>
