@@ -16,7 +16,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   .mgmt-table th, .mgmt-table td { padding: 6px 8px; border: 1px solid var(--border); }
   .mgmt-table td:first-child { font-weight: 500; padding-left: 12px; }
@@ -165,8 +165,209 @@
     footer { padding: 4px !important; margin-top: 6px !important; }
   }
 </style>
+
+<style id="loading-style">
+  #loading-screen {
+    position: fixed; inset: 0; z-index: 99998;
+    background: linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 100%);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-family: 'Noto Serif TC', system-ui, sans-serif;
+    transition: opacity 0.6s ease;
+  }
+  #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+
+  /* 浮動小泡泡 */
+  .bubble {
+    position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    animation: floatUp linear infinite;
+  }
+  @keyframes floatUp {
+    0%   { transform: translateY(0) scale(1); opacity: 0.6; }
+    100% { transform: translateY(-110vh) scale(1.3); opacity: 0; }
+  }
+
+  /* 太陽圖示 */
+  #loading-sun {
+    width: 72px; height: 72px; margin-bottom: 8px;
+    animation: sunPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes sunPulse {
+    0%,100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+    50%      { transform: scale(1.12) rotate(10deg); filter: brightness(1.2); }
+  }
+
+  #loading-title {
+    color: #fff; font-size: 1.25rem; font-weight: 700;
+    letter-spacing: 0.08em; margin-bottom: 4px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  #loading-subtitle {
+    color: #a7f3d0; font-size: 0.75rem; letter-spacing: 0.15em;
+    margin-bottom: 36px;
+  }
+
+  /* 進度條容器 */
+  #loading-bar-wrap {
+    width: 260px; position: relative;
+  }
+  #loading-bar-bg {
+    width: 100%; height: 14px; border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  }
+  #loading-bar-fill {
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, #34d399, #6ee7b7, #fbbf24);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s linear infinite;
+    transition: width 0.12s ease-out;
+    box-shadow: 0 0 10px rgba(110,231,183,0.6);
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* 可愛小水滴 emoji 跑在進度條上 */
+  #loading-runner {
+    position: absolute; top: -18px;
+    font-size: 20px; line-height: 1;
+    transform: translateX(-50%);
+    transition: left 0.12s ease-out;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    animation: bounce 0.4s ease-in-out infinite alternate;
+  }
+  @keyframes bounce {
+    0%   { transform: translateX(-50%) translateY(0); }
+    100% { transform: translateX(-50%) translateY(-5px); }
+  }
+
+  #loading-pct {
+    text-align: center; margin-top: 12px;
+    color: #6ee7b7; font-size: 0.9rem; font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  #loading-msg {
+    text-align: center; margin-top: 6px;
+    color: rgba(255,255,255,0.6); font-size: 0.7rem;
+    letter-spacing: 0.05em; min-height: 1em;
+  }
+
+  /* 波浪底部裝飾 */
+  #loading-wave {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 80px; overflow: hidden;
+  }
+  #loading-wave svg { width: 100%; height: 100%; }
+</style>
 </head>
 <body>
+
+<div id="loading-screen">
+  <!-- 浮動泡泡 -->
+  <div class="bubble" style="width:40px;height:40px;left:10%;animation-duration:6s;animation-delay:0s"></div>
+  <div class="bubble" style="width:20px;height:20px;left:30%;animation-duration:8s;animation-delay:1s"></div>
+  <div class="bubble" style="width:60px;height:60px;left:60%;animation-duration:7s;animation-delay:0.5s"></div>
+  <div class="bubble" style="width:30px;height:30px;left:80%;animation-duration:5s;animation-delay:2s"></div>
+  <div class="bubble" style="width:15px;height:15px;left:50%;animation-duration:9s;animation-delay:1.5s"></div>
+
+  <!-- 太陽 SVG -->
+  <svg id="loading-sun" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="36" cy="36" r="16" fill="#fbbf24"/>
+    <circle cx="36" cy="36" r="10" fill="#fef3c7"/>
+    <g stroke="#fde68a" stroke-width="3" stroke-linecap="round">
+      <line x1="36" y1="6"  x2="36" y2="14"/>
+      <line x1="36" y1="58" x2="36" y2="66"/>
+      <line x1="6"  y1="36" x2="14" y2="36"/>
+      <line x1="58" y1="36" x2="66" y2="36"/>
+      <line x1="14.9" y1="14.9" x2="20.6" y2="20.6"/>
+      <line x1="51.4" y1="51.4" x2="57.1" y2="57.1"/>
+      <line x1="57.1" y1="14.9" x2="51.4" y2="20.6"/>
+      <line x1="20.6" y1="51.4" x2="14.9" y2="57.1"/>
+    </g>
+  </svg>
+
+  <div id="loading-title">農田水利署</div>
+  <div id="loading-subtitle">水域型農業綠能管制考核儀表板</div>
+
+  <div id="loading-bar-wrap">
+    <div id="loading-runner" style="left:0%">💧</div>
+    <div id="loading-bar-bg">
+      <div id="loading-bar-fill"></div>
+    </div>
+  </div>
+  <div id="loading-pct">0%</div>
+  <div id="loading-msg">初始化中...</div>
+
+  <!-- 波浪裝飾 -->
+  <div id="loading-wave">
+    <svg viewBox="0 0 1200 80" preserveAspectRatio="none">
+      <path d="M0,40 C200,80 400,0 600,40 C800,80 1000,0 1200,40 L1200,80 L0,80 Z"
+            fill="rgba(255,255,255,0.06)"/>
+      <path d="M0,55 C150,30 350,70 600,55 C850,40 1050,70 1200,55 L1200,80 L0,80 Z"
+            fill="rgba(255,255,255,0.04)"/>
+    </svg>
+  </div>
+</div>
+
+<script>
+(function() {
+  var msgs = [
+    '初始化中...', '載入案場資料...', '計算統計數據...',
+    '繪製圖表...', '準備完成 🌱'
+  ];
+  var pct = 0;
+  var fill = document.getElementById('loading-bar-fill');
+  var runner = document.getElementById('loading-runner');
+  var pctEl = document.getElementById('loading-pct');
+  var msgEl = document.getElementById('loading-msg');
+  var screen = document.getElementById('loading-screen');
+
+  function setProgress(p) {
+    pct = p;
+    fill.style.width = p + '%';
+    runner.style.left = p + '%';
+    pctEl.textContent = Math.round(p) + '%';
+    msgEl.textContent = msgs[Math.min(Math.floor(p / 22), msgs.length - 1)];
+  }
+
+  // 快速跑到 85%
+  var start = null;
+  function animFast(ts) {
+    if (!start) start = ts;
+    var elapsed = ts - start;
+    var p = Math.min(85, elapsed / 12);
+    setProgress(p);
+    if (p < 85) requestAnimationFrame(animFast);
+  }
+  requestAnimationFrame(animFast);
+
+  // 頁面 load 後跑到 100% 並淡出
+  window.addEventListener('load', function() {
+    setTimeout(function() {
+      var s2 = null;
+      function animFinish(ts) {
+        if (!s2) s2 = ts;
+        var p = Math.min(100, 85 + (ts - s2) / 4);
+        setProgress(p);
+        if (p < 100) {
+          requestAnimationFrame(animFinish);
+        } else {
+          msgEl.textContent = '準備完成 ✨';
+          setTimeout(function() {
+            screen.classList.add('fade-out');
+            setTimeout(function() { screen.remove(); }, 700);
+          }, 300);
+        }
+      }
+      requestAnimationFrame(animFinish);
+    }, 200);
+  });
+})();
+</script>
+
 <div id="app"></div>
 
 <script>
@@ -438,7 +639,7 @@ function exportRiChiSolar(baseRows) {
     row._changed.forEach(ci => {
       const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
       if (!ws[addr]) return;
-      ws[addr].s = { fill: { fgColor: { rgb: 'FFFF00' }, patternType: 'solid' } };
+      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
     });
   });
   
@@ -477,7 +678,7 @@ function exportRiChiHydro(baseRows) {
     row._changed.forEach(ci => {
       const addr = XLSX.utils.encode_cell({ r: ri, c: ci });
       if (!ws[addr]) return;
-      ws[addr].s = { fill: { fgColor: { rgb: 'FFFF00' }, patternType: 'solid' } };
+      ws[addr].s = { fill: { patternType: 'solid', fgColor: { rgb: 'FFFF00' } }, font: { name: 'Calibri', sz: 11 } };
     });
   });
   
@@ -6516,7 +6717,7 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="exportDataForDeploy()" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600">☁️ 同步至雲端</button>
             <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button>
             <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer">
-              📥 匯入填報基底<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
+              📥 各管理處回傳<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
             </label>
             <label class="icon-btn no-print" style="background:#f0fdf4;color:#15803d;border-color:#16a34a;font-weight:600;cursor:pointer" title="選擇 RiChi 兩個基底檔案">
               📋 匯入 RiChi 基底<input type="file" accept=".xlsx" multiple onchange="importRiChiBase(event)" style="display:none">
@@ -7629,6 +7830,7 @@ ${styleTags}
     </div>
   </div>
   <div class="print-cards">${cardsHtml}</div>
+
 </body>
 </html>`;
   
@@ -7709,6 +7911,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   render();
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+
+
+<script>
+(function() {
+  var _p = null;
+  window.addEventListener("beforeinstallprompt", function(e) {
+    e.preventDefault(); _p = e;
+    setTimeout(function() { if (_p) { _p.prompt(); _p = null; } }, 1500);
+  });
+  if ("serviceWorker" in navigator) {
+    var sw = 'self.addEventListener("install",e=>self.skipWaiting());';
+    sw += 'self.addEventListener("activate",e=>clients.claim());';
+    sw += 'self.addEventListener("fetch",e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));' ;
+    navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:"application/javascript"})),{scope:"./"}).catch(function(){});
+  }
+  window.addEventListener("load", function() {
+    if (!/iphone|ipad|ipod/i.test(navigator.userAgent)) return;
+    if (!/^((?!chrome|android).)*safari/i.test(navigator.userAgent)) return;
+    if (window.navigator.standalone) return;
+    setTimeout(function() {
+      var b = document.createElement("div");
+      b.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#065f46;color:white;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;font-size:14px";
+      var html = "<img src=\"data:image/png;base64,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\" style=\"width:44px;height:44px;border-radius:10px\">"
+        + "<div style=\"flex:1\"><b>加入主畫面</b><br><span style=\"opacity:0.85\">點下方分享按鈕，選「加入主畫面」</span></div>"
+        + "<button onclick=\"this.parentNode.remove()\" style=\"background:rgba(255,255,255,0.2);border:none;color:white;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:18px\">✕</button>";
+      b.innerHTML = html;
+      document.body.appendChild(b);
+    }, 1000);
+  });
+})();
 </script>
 </body>
 </html>
