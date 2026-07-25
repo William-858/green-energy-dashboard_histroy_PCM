@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-07-02",
+  "updated_at": "2026-07-21",
   "solar": {
     "summary": {
       "total_completed_cases": 135,
@@ -28,22 +28,22 @@
       {
         "key": "construction",
         "name": "施工中(含案場施工中下修)",
-        "cases": 3,
-        "mw": 2.53,
+        "cases": 2,
+        "mw": 2.04,
         "color": "#0891b2"
       },
       {
         "key": "admin",
         "name": "申設中",
-        "cases": 33,
-        "mw": 78.35,
+        "cases": 32,
+        "mw": 77.8,
         "color": "#6366f1"
       },
       {
         "key": "planning",
         "name": "規劃中",
-        "cases": 213,
-        "mw": 340.1,
+        "cases": 215,
+        "mw": 341.14,
         "color": "#94a3b8"
       }
     ],
@@ -83,9 +83,9 @@
         "name": "石門",
         "target_mw": 22,
         "completed_mw": 10.2746,
-        "construction_mw": 0.4941,
-        "admin_mw": 0.55,
-        "planning_mw": 24.6306,
+        "construction_mw": 0,
+        "admin_mw": 0,
+        "planning_mw": 25.6747,
         "remaining_mw": 25.6747,
         "total_potential_mw": 35.9493,
         "achievement_pct": 46.7,
@@ -6384,58 +6384,11 @@
         "renewable_type": "第三型",
         "facility_name": "坑子口圳-4",
         "contract_start_date": "2021-10-01"
-      },
-      {
-        "no": 1,
-        "county": "桃園市",
-        "type": "圳路",
-        "mgmt": "石門",
-        "name": "圳路-石門管理處-石門大圳-草湳坡段",
-        "capacity_mw": 0.4941,
-        "expected_date": "113/10",
-        "note": "暫緩施工",
-        "progress": "停止推動",
-        "vendor": "耀盈能源科技股份有限公司",
-        "stage": "停工中",
-        "taipower_review_no": "103111PV0089",
-        "approval_no": "TYU-111PV0517",
-        "cadastral_area_ha": 0.8243,
-        "cadastral_area_m2": 8243,
-        "related_villages": "永平區",
-        "land_no": "楊梅區草湳坡段草湳坡小段：0033-0036、0033-0038、0033-0040、0089-0002",
-        "install_type": "地面型",
-        "work_zone_name": "圳路-石門管理處-石門大圳-草湳坡段",
-        "work_zone_short": "石門大圳-草湳坡段",
-        "sys_stage": "施工中",
-        "project_name": "石門大圳(草湳坡段、二重溪段、東流段)太陽光電發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "石門大圳-草湳坡段",
-        "contract_start_date": "2021-08-24"
       }
     ],
     "admin_sites": [
       {
         "no": 1,
-        "county": "桃園市",
-        "type": "圳路",
-        "mgmt": "石門",
-        "name": "圳路-石門管理處-過嶺支渠",
-        "capacity_mw": 0.55,
-        "progress": "申請台電饋線保留中",
-        "vendor": "晶成科技股份有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 2.470986,
-        "cadastral_area_m2": 24709.86,
-        "land_no": "平鎮區高雙段：0877-0000、0878-0000、0879-0000、0880-0000、0883-0000、0884-0000、0884-0001、0885-0000、0885-0001、0886-0000、0886-0001、0887-0000、0887-0001、1197-0000、1198-0000、1199-0000、1200-0000、1201-0000、1206-0000、1207-0000、1208-0000、1209-0000、1210-0000、1211-0000、1219-0000、1220-0000、1221-0000、1224-0000、1225-0000、1226-0000、1227-0000、1228-0000、1229-0000、1230-0000、1231-0000、1232-0000、1234-0000，楊梅區高榮段：0037-0000、0038-0000、0039-0000、0040-0000、0041-0000、0043-0000、0044-0000、0045-0000、0050-0000、0051-0000、0052-0000、0053-0000、0054-0000、0055-0000、0060-0000、0062-0000、0064-0000、0067-0000、0074-0000、0076-0000、0323-0000、0324-0000、0325-0000",
-        "work_zone_name": "圳路-石門管理處-過嶺支渠",
-        "work_zone_short": "過嶺支渠",
-        "sys_stage": "申設中",
-        "project_name": "過嶺支渠太陽光電發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "過嶺支渠"
-      },
-      {
-        "no": 2,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6455,7 +6408,7 @@
         "facility_name": "北港支線水系-北港支線一區"
       },
       {
-        "no": 3,
+        "no": 2,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6475,7 +6428,7 @@
         "facility_name": "北港支線水系-北港支線二區"
       },
       {
-        "no": 4,
+        "no": 3,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6495,7 +6448,7 @@
         "facility_name": "北港支線水系-水井分線一區"
       },
       {
-        "no": 5,
+        "no": 4,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6515,207 +6468,7 @@
         "facility_name": "北港支線水系-後溝子分線"
       },
       {
-        "no": 6,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-竹東圳幹線",
-        "capacity_mw": 0.0999,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.190651,
-        "cadastral_area_m2": 1906.51,
-        "land_no": "竹東鎮軟橋段：0107-0000、0188-0000、0192-0000",
-        "work_zone_name": "圳路-新竹管理處-竹東圳幹線",
-        "work_zone_short": "竹東圳幹線",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "竹東圳幹線"
-      },
-      {
-        "no": 7,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-貓兒錠幹線",
-        "capacity_mw": 0.38554,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 1.1108,
-        "cadastral_area_m2": 11108,
-        "land_no": "竹北市貓兒錠段後面小段：0862-0000",
-        "work_zone_name": "圳路-新竹管理處-貓兒錠幹線",
-        "work_zone_short": "貓兒錠幹線",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "貓兒錠幹線"
-      },
-      {
-        "no": 8,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-貓兒錠大排1",
-        "capacity_mw": 0.35372,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.6584,
-        "cadastral_area_m2": 6584,
-        "land_no": "竹北市貓兒錠段後面小段：0855-0000、0851-0000",
-        "work_zone_name": "圳路-新竹管理處-貓兒錠大排1",
-        "work_zone_short": "貓兒錠大排1",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "貓兒錠大排1"
-      },
-      {
-        "no": 9,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-貓兒錠幹線8支線",
-        "capacity_mw": 0.45806,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.647,
-        "cadastral_area_m2": 6470,
-        "land_no": "竹北市貓兒錠段後面小段：0860-0000",
-        "work_zone_name": "圳路-新竹管理處-貓兒錠幹線8支線",
-        "work_zone_short": "貓兒錠幹線8支線",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "貓兒錠幹線8支線"
-      },
-      {
-        "no": 10,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-貓兒錠大排2",
-        "capacity_mw": 0.49987,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 1.2114,
-        "cadastral_area_m2": 12114,
-        "land_no": "竹北市貓兒錠段山腳小段：0614-0001、0614-0002",
-        "work_zone_name": "圳路-新竹管理處-貓兒錠大排2",
-        "work_zone_short": "貓兒錠大排2",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "貓兒錠大排2"
-      },
-      {
-        "no": 11,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-翁厝南幹線",
-        "capacity_mw": 0.37222,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 1.1278,
-        "cadastral_area_m2": 11278,
-        "land_no": "竹北市溝貝段：0007-0016",
-        "work_zone_name": "圳路-新竹管理處-翁厝南幹線",
-        "work_zone_short": "翁厝南幹線",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "翁厝南幹線"
-      },
-      {
-        "no": 12,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-澎湖窟圳",
-        "capacity_mw": 0.49987,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.5171,
-        "cadastral_area_m2": 5171,
-        "land_no": "竹北市溪洲段：0638-0000",
-        "work_zone_name": "圳路-新竹管理處-澎湖窟圳",
-        "work_zone_short": "澎湖窟圳",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "澎湖窟圳"
-      },
-      {
-        "no": 13,
-        "county": "新竹縣",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-澎湖窟圳3支線",
-        "capacity_mw": 0.0999,
-        "progress": "台電併聯審查籌辦中",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 1.013,
-        "cadastral_area_m2": 10130,
-        "land_no": "竹北市溪洲段：0685-0005、0691-0001",
-        "work_zone_name": "圳路-新竹管理處-澎湖窟圳3支線",
-        "work_zone_short": "澎湖窟圳3支線",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "澎湖窟圳3支線"
-      },
-      {
-        "no": 14,
-        "county": "新竹市",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-港南大排1",
-        "capacity_mw": 0.49987,
-        "progress": "容許使用申請中(台電併聯審查已完成)",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.572418,
-        "cadastral_area_m2": 5724.18,
-        "land_no": "港南段：0692-0000、0669-0000、0686-0000、0672-0000、0667-0000、0668-0000、0670-0000、0671-0000、0691-0000",
-        "work_zone_name": "圳路-新竹管理處-港南大排1",
-        "work_zone_short": "港南大排1",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "港南大排1"
-      },
-      {
-        "no": 15,
-        "county": "新竹市",
-        "type": "圳路",
-        "mgmt": "新竹",
-        "name": "圳路-新竹管理處-港南大排2",
-        "capacity_mw": 0.49987,
-        "progress": "容許使用申請中(台電併聯審查已完成)",
-        "vendor": "嘉昱能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 0.735741,
-        "cadastral_area_m2": 7357.41,
-        "land_no": "港南段：0734-0000、0733-0000",
-        "work_zone_name": "圳路-新竹管理處-港南大排2",
-        "work_zone_short": "港南大排2",
-        "sys_stage": "申設中",
-        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
-        "renewable_type": "第三型",
-        "facility_name": "港南大排2"
-      },
-      {
-        "no": 16,
+        "no": 5,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6735,7 +6488,7 @@
         "facility_name": "斗六大圳6K+328-6K+753"
       },
       {
-        "no": 17,
+        "no": 6,
         "county": "屏東縣",
         "type": "圳路",
         "mgmt": "屏東",
@@ -6755,7 +6508,7 @@
         "facility_name": "萬丹圳幹線(二期)"
       },
       {
-        "no": 18,
+        "no": 7,
         "county": "屏東縣",
         "type": "圳路",
         "mgmt": "屏東",
@@ -6775,7 +6528,7 @@
         "facility_name": "萬丹圳幹線(三期)"
       },
       {
-        "no": 19,
+        "no": 8,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6795,7 +6548,7 @@
         "facility_name": "溪口排水"
       },
       {
-        "no": 20,
+        "no": 9,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6815,7 +6568,7 @@
         "facility_name": "太平渠幹線(高寮段)"
       },
       {
-        "no": 21,
+        "no": 10,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6835,7 +6588,7 @@
         "facility_name": "太平渠幹線(泰林段)"
       },
       {
-        "no": 22,
+        "no": 11,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6855,7 +6608,7 @@
         "facility_name": "太平渠幹線(神農段)"
       },
       {
-        "no": 23,
+        "no": 12,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6875,7 +6628,7 @@
         "facility_name": "太平渠幹線(哈拉灣段)"
       },
       {
-        "no": 24,
+        "no": 13,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6895,7 +6648,7 @@
         "facility_name": "濁幹線(三合里)"
       },
       {
-        "no": 25,
+        "no": 14,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6915,7 +6668,7 @@
         "facility_name": "源城排水"
       },
       {
-        "no": 26,
+        "no": 15,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6935,7 +6688,7 @@
         "facility_name": "新城圳幹線"
       },
       {
-        "no": 27,
+        "no": 16,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6955,7 +6708,7 @@
         "facility_name": "豐裡排水"
       },
       {
-        "no": 28,
+        "no": 17,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6975,7 +6728,7 @@
         "facility_name": "林田圳幹線"
       },
       {
-        "no": 29,
+        "no": 18,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6995,7 +6748,7 @@
         "facility_name": "吉安圳二幹線"
       },
       {
-        "no": 30,
+        "no": 19,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -7015,7 +6768,7 @@
         "facility_name": "林田圳2支線"
       },
       {
-        "no": 31,
+        "no": 20,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -7035,7 +6788,7 @@
         "facility_name": "豐村圳2支線"
       },
       {
-        "no": 32,
+        "no": 21,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -7055,7 +6808,47 @@
         "facility_name": "平林圳林榮支線"
       },
       {
-        "no": 33,
+        "no": 22,
+        "county": "新竹市",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-港南大排1",
+        "capacity_mw": 0.49987,
+        "progress": "容許使用申請中(台電併聯審查已完成)",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.572418,
+        "cadastral_area_m2": 5724.18,
+        "land_no": "港南段：0692-0000、0669-0000、0686-0000、0672-0000、0667-0000、0668-0000、0670-0000、0671-0000、0691-0000",
+        "work_zone_name": "圳路-新竹管理處-港南大排1",
+        "work_zone_short": "港南大排1",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "港南大排1"
+      },
+      {
+        "no": 23,
+        "county": "新竹市",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-港南大排2",
+        "capacity_mw": 0.49987,
+        "progress": "容許使用申請中(台電併聯審查已完成)",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.735741,
+        "cadastral_area_m2": 7357.41,
+        "land_no": "港南段：0734-0000、0733-0000",
+        "work_zone_name": "圳路-新竹管理處-港南大排2",
+        "work_zone_short": "港南大排2",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "港南大排2"
+      },
+      {
+        "no": 24,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "新竹",
@@ -7073,6 +6866,166 @@
         "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
         "renewable_type": "第三型",
         "facility_name": "坪林人工蓄水池"
+      },
+      {
+        "no": 25,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-竹東圳幹線",
+        "capacity_mw": 0.0999,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.190651,
+        "cadastral_area_m2": 1906.51,
+        "land_no": "竹東鎮軟橋段：0107-0000、0188-0000、0192-0000",
+        "work_zone_name": "圳路-新竹管理處-竹東圳幹線",
+        "work_zone_short": "竹東圳幹線",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "竹東圳幹線"
+      },
+      {
+        "no": 26,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-貓兒錠幹線",
+        "capacity_mw": 0.38554,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 1.1108,
+        "cadastral_area_m2": 11108,
+        "land_no": "竹北市貓兒錠段後面小段：0862-0000",
+        "work_zone_name": "圳路-新竹管理處-貓兒錠幹線",
+        "work_zone_short": "貓兒錠幹線",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "貓兒錠幹線"
+      },
+      {
+        "no": 27,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-貓兒錠大排1",
+        "capacity_mw": 0.35372,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.6584,
+        "cadastral_area_m2": 6584,
+        "land_no": "竹北市貓兒錠段後面小段：0855-0000、0851-0000",
+        "work_zone_name": "圳路-新竹管理處-貓兒錠大排1",
+        "work_zone_short": "貓兒錠大排1",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "貓兒錠大排1"
+      },
+      {
+        "no": 28,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-貓兒錠幹線8支線",
+        "capacity_mw": 0.45806,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.647,
+        "cadastral_area_m2": 6470,
+        "land_no": "竹北市貓兒錠段後面小段：0860-0000",
+        "work_zone_name": "圳路-新竹管理處-貓兒錠幹線8支線",
+        "work_zone_short": "貓兒錠幹線8支線",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "貓兒錠幹線8支線"
+      },
+      {
+        "no": 29,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-貓兒錠大排2",
+        "capacity_mw": 0.49987,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 1.2114,
+        "cadastral_area_m2": 12114,
+        "land_no": "竹北市貓兒錠段山腳小段：0614-0001、0614-0002",
+        "work_zone_name": "圳路-新竹管理處-貓兒錠大排2",
+        "work_zone_short": "貓兒錠大排2",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "貓兒錠大排2"
+      },
+      {
+        "no": 30,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-翁厝南幹線",
+        "capacity_mw": 0.37222,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 1.1278,
+        "cadastral_area_m2": 11278,
+        "land_no": "竹北市溝貝段：0007-0016",
+        "work_zone_name": "圳路-新竹管理處-翁厝南幹線",
+        "work_zone_short": "翁厝南幹線",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "翁厝南幹線"
+      },
+      {
+        "no": 31,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-澎湖窟圳",
+        "capacity_mw": 0.49987,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 0.5171,
+        "cadastral_area_m2": 5171,
+        "land_no": "竹北市溪洲段：0638-0000",
+        "work_zone_name": "圳路-新竹管理處-澎湖窟圳",
+        "work_zone_short": "澎湖窟圳",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "澎湖窟圳"
+      },
+      {
+        "no": 32,
+        "county": "新竹縣",
+        "type": "圳路",
+        "mgmt": "新竹",
+        "name": "圳路-新竹管理處-澎湖窟圳3支線",
+        "capacity_mw": 0.0999,
+        "progress": "台電併聯審查籌辦中",
+        "vendor": "嘉昱能源有限公司",
+        "stage": "行政程序中",
+        "cadastral_area_ha": 1.013,
+        "cadastral_area_m2": 10130,
+        "land_no": "竹北市溪洲段：0685-0005、0691-0001",
+        "work_zone_name": "圳路-新竹管理處-澎湖窟圳3支線",
+        "work_zone_short": "澎湖窟圳3支線",
+        "sys_stage": "申設中",
+        "project_name": "竹東圳等8圳暨坪林人工蓄水池太陽能發電系統計畫",
+        "renewable_type": "第三型",
+        "facility_name": "澎湖窟圳3支線"
       }
     ],
     "planning_sites": [
@@ -9903,9 +9856,9 @@
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
-        "name": "圳路-花蓮管理處-太平渠幹線(哈拉灣段)",
-        "capacity_mw": 0.9468702863692797,
-        "progress": "容許使用籌辦中(台電併聯審查申請中)",
+        "name": "圳路-花蓮管理處-豐村圳2支線",
+        "capacity_mw": 0.030299999999999994,
+        "progress": "投資計畫書審查完畢",
         "vendor": "中租迪和股份有限公司",
         "stage": "規劃推動-招商中"
       },
@@ -9914,14 +9867,36 @@
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
-        "name": "圳路-花蓮管理處-豐村圳2支線",
-        "capacity_mw": 0.030299999999999994,
-        "progress": "投資計畫書審查完畢",
+        "name": "圳路-花蓮管理處-太平渠幹線(哈拉灣段)",
+        "capacity_mw": 0.9468702863692797,
+        "progress": "容許使用籌辦中(台電併聯審查申請中)",
         "vendor": "中租迪和股份有限公司",
         "stage": "規劃推動-招商中"
       },
       {
         "no": 160,
+        "county": "桃園市",
+        "type": "圳路",
+        "mgmt": "石門",
+        "name": "圳路-石門管理處-過嶺支渠",
+        "capacity_mw": 0.55,
+        "progress": "申請台電饋線保留中",
+        "vendor": "晶成科技股份有限公司",
+        "stage": "規劃推動-招商中"
+      },
+      {
+        "no": 161,
+        "county": "桃園市",
+        "type": "圳路",
+        "mgmt": "石門",
+        "name": "圳路-石門管理處-石門大圳-草湳坡段",
+        "capacity_mw": 0.4941,
+        "progress": "",
+        "vendor": "",
+        "stage": "規劃推動-招商中"
+      },
+      {
+        "no": 162,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -9939,7 +9914,7 @@
         "facility_name": "員24B"
       },
       {
-        "no": 161,
+        "no": 163,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -9957,7 +9932,7 @@
         "facility_name": "員35池"
       },
       {
-        "no": 162,
+        "no": 164,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -9975,7 +9950,7 @@
         "facility_name": "員55B池"
       },
       {
-        "no": 163,
+        "no": 165,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -9993,7 +9968,7 @@
         "facility_name": "員8號池"
       },
       {
-        "no": 164,
+        "no": 166,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10011,7 +9986,7 @@
         "facility_name": "員特1"
       },
       {
-        "no": 165,
+        "no": 167,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10029,7 +10004,7 @@
         "facility_name": "員特2"
       },
       {
-        "no": 166,
+        "no": 168,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10047,7 +10022,7 @@
         "facility_name": "過39(40A)"
       },
       {
-        "no": 167,
+        "no": 169,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10065,7 +10040,7 @@
         "facility_name": "過58號"
       },
       {
-        "no": 168,
+        "no": 170,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10083,7 +10058,7 @@
         "facility_name": "過61B"
       },
       {
-        "no": 169,
+        "no": 171,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10101,7 +10076,7 @@
         "facility_name": "環17B"
       },
       {
-        "no": 170,
+        "no": 172,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10119,7 +10094,7 @@
         "facility_name": "環26A"
       },
       {
-        "no": 171,
+        "no": 173,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10137,7 +10112,7 @@
         "facility_name": "環26B"
       },
       {
-        "no": 172,
+        "no": 174,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10155,7 +10130,7 @@
         "facility_name": "環42B"
       },
       {
-        "no": 173,
+        "no": 175,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10173,7 +10148,7 @@
         "facility_name": "繞13"
       },
       {
-        "no": 174,
+        "no": 176,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10191,7 +10166,7 @@
         "facility_name": "繞38"
       },
       {
-        "no": 175,
+        "no": 177,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10209,7 +10184,7 @@
         "facility_name": "繞47"
       },
       {
-        "no": 176,
+        "no": 178,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10227,7 +10202,7 @@
         "facility_name": "繞嶺54B池"
       },
       {
-        "no": 177,
+        "no": 179,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10245,7 +10220,7 @@
         "facility_name": "繞嶺58池"
       },
       {
-        "no": 178,
+        "no": 180,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10263,7 +10238,7 @@
         "facility_name": "繞嶺65B池"
       },
       {
-        "no": 179,
+        "no": 181,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "石門",
@@ -10281,7 +10256,7 @@
         "facility_name": "繞嶺69池"
       },
       {
-        "no": 180,
+        "no": 182,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10299,7 +10274,7 @@
         "facility_name": "光復圳11-2號池"
       },
       {
-        "no": 181,
+        "no": 183,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10317,7 +10292,7 @@
         "facility_name": "光復圳5-4號池"
       },
       {
-        "no": 182,
+        "no": 184,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10335,7 +10310,7 @@
         "facility_name": "光復圳6-1號池"
       },
       {
-        "no": 183,
+        "no": 185,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10353,7 +10328,7 @@
         "facility_name": "光復圳6-2號池"
       },
       {
-        "no": 184,
+        "no": 186,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10371,7 +10346,7 @@
         "facility_name": "光復圳7-2號池"
       },
       {
-        "no": 185,
+        "no": 187,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10389,7 +10364,7 @@
         "facility_name": "光復圳7-3號池"
       },
       {
-        "no": 186,
+        "no": 188,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10407,7 +10382,7 @@
         "facility_name": "光復圳7-4號池"
       },
       {
-        "no": 187,
+        "no": 189,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10425,7 +10400,7 @@
         "facility_name": "光復圳7-5號池"
       },
       {
-        "no": 188,
+        "no": 190,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10443,7 +10418,7 @@
         "facility_name": "光復圳8-11號池"
       },
       {
-        "no": 189,
+        "no": 191,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10461,7 +10436,7 @@
         "facility_name": "光復圳8-12號池(二期擴充)"
       },
       {
-        "no": 190,
+        "no": 192,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10479,7 +10454,7 @@
         "facility_name": "光復圳8-15號池"
       },
       {
-        "no": 191,
+        "no": 193,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10497,7 +10472,7 @@
         "facility_name": "光復圳8-16號池"
       },
       {
-        "no": 192,
+        "no": 194,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10515,7 +10490,7 @@
         "facility_name": "光復圳8-18號池"
       },
       {
-        "no": 193,
+        "no": 195,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10533,7 +10508,7 @@
         "facility_name": "光復圳8-1號池"
       },
       {
-        "no": 194,
+        "no": 196,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10551,7 +10526,7 @@
         "facility_name": "光復圳8-3號池"
       },
       {
-        "no": 195,
+        "no": 197,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10569,7 +10544,7 @@
         "facility_name": "光復圳8-6號池"
       },
       {
-        "no": 196,
+        "no": 198,
         "county": "新竹縣",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10587,7 +10562,7 @@
         "facility_name": "光復圳9-2號池"
       },
       {
-        "no": 197,
+        "no": 199,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10605,7 +10580,7 @@
         "facility_name": "桃園大圳10-16號池"
       },
       {
-        "no": 198,
+        "no": 200,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10623,7 +10598,7 @@
         "facility_name": "桃園大圳10-19號池"
       },
       {
-        "no": 199,
+        "no": 201,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10641,7 +10616,7 @@
         "facility_name": "桃園大圳10-20號池"
       },
       {
-        "no": 200,
+        "no": 202,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10659,7 +10634,7 @@
         "facility_name": "桃園大圳2-10號池"
       },
       {
-        "no": 201,
+        "no": 203,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10677,7 +10652,7 @@
         "facility_name": "桃園大圳5-11號池"
       },
       {
-        "no": 202,
+        "no": 204,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10695,7 +10670,7 @@
         "facility_name": "桃園大圳6-10號池"
       },
       {
-        "no": 203,
+        "no": 205,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10713,7 +10688,7 @@
         "facility_name": "桃園大圳6-9號池"
       },
       {
-        "no": 204,
+        "no": 206,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10731,7 +10706,7 @@
         "facility_name": "桃園大圳7-12號池"
       },
       {
-        "no": 205,
+        "no": 207,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10749,7 +10724,7 @@
         "facility_name": "桃園大圳7-13號池"
       },
       {
-        "no": 206,
+        "no": 208,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10767,7 +10742,7 @@
         "facility_name": "桃園大圳7-14號池"
       },
       {
-        "no": 207,
+        "no": 209,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10785,7 +10760,7 @@
         "facility_name": "桃園大圳7-15號池"
       },
       {
-        "no": 208,
+        "no": 210,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10803,7 +10778,7 @@
         "facility_name": "桃園大圳8-12號池"
       },
       {
-        "no": 209,
+        "no": 211,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10821,7 +10796,7 @@
         "facility_name": "桃園大圳8-32號池"
       },
       {
-        "no": 210,
+        "no": 212,
         "county": "桃園市",
         "type": "埤塘",
         "mgmt": "桃園",
@@ -10839,7 +10814,7 @@
         "facility_name": "桃園大圳8-33號池"
       },
       {
-        "no": 211,
+        "no": 213,
         "county": "臺南市",
         "type": "埤塘",
         "mgmt": "嘉南",
@@ -10858,7 +10833,7 @@
         "facility_name": "烏瓦磘埤"
       },
       {
-        "no": 212,
+        "no": 214,
         "county": "臺東縣",
         "type": "埤塘",
         "mgmt": "臺東",
@@ -10878,7 +10853,7 @@
         "facility_name": "馬背調整池"
       },
       {
-        "no": 213,
+        "no": 215,
         "county": "臺南市",
         "type": "農業水庫",
         "mgmt": "嘉南",
@@ -12711,6 +12686,23 @@
         "year": "114年",
         "operation": "完工併網-\r\n1.114/12/17 完工併網(台中字第1148162986號)。\r\n2.115/06/01 申請設備核准 同意備案編號：TXG-114HP0001",
         "vendor": "森崴能源股份有限公司",
+        "note": "",
+        "stage": "已完工/已完成",
+        "substage": "營運中",
+        "is_anomaly": false,
+        "anomaly_type": "",
+        "anomaly_level": ""
+      },
+      {
+        "mgmt": "臺中",
+        "county": "臺中市",
+        "township": "后里區",
+        "contract": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
+        "name": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
+        "capacity_kw": 60,
+        "year": "114年",
+        "operation": "完工併網-\r\n114/12/03向管理處重新申請竣工函，管理處114/12/26重新核發竣工函(農水臺中字第1148450327號)。\r\n115/05/05 重新申請同意備案中。\r\n115/7/13取得台中市政府設備登記同意函(同意備案編號：TXG-114HP0002)",
+        "vendor": "恆水創電股份有限公司",
         "note": "取得台電併聯審查700kW",
         "stage": "已完工/已完成",
         "substage": "營運中",
@@ -12872,6 +12864,40 @@
         "anomaly_level": "red"
       },
       {
+        "mgmt": "南投",
+        "county": "台中市",
+        "township": "霧峰區",
+        "contract": "-",
+        "name": "阿罩霧第一圳導水路幹線(迪暘)",
+        "capacity_kw": 20,
+        "year": "114年",
+        "operation": "展延期限為115/01/16至115/07/16\r\n目前機組從新安裝測試中",
+        "vendor": "迪暘有限公司",
+        "note": "",
+        "stage": "已完工/已完成",
+        "substage": "測試",
+        "is_anomaly": true,
+        "anomaly_type": "測試中",
+        "anomaly_level": "yellow"
+      },
+      {
+        "mgmt": "嘉南",
+        "county": "嘉義縣",
+        "township": "竹崎鄉",
+        "contract": "-",
+        "name": "中興圳幹線跌水工",
+        "capacity_kw": 0.5,
+        "year": "114年",
+        "operation": "運轉測試中\r\n測試期間：114/12/05~115/01/29\r\n（測試期限屆滿）",
+        "vendor": "山立能源科技有限公司",
+        "note": "",
+        "stage": "已完工/已完成",
+        "substage": "測試",
+        "is_anomaly": true,
+        "anomaly_type": "測試中",
+        "anomaly_level": "yellow"
+      },
+      {
         "mgmt": "雲林",
         "county": "雲林縣",
         "township": "林內鄉",
@@ -12932,23 +12958,6 @@
         "year": "115年",
         "operation": "完成招標-\r\n115/04/30提送施工計畫書，115/06/05開工。",
         "vendor": "嘉德技術開發股份有限公司",
-        "note": "",
-        "stage": "推動中",
-        "substage": "推動中",
-        "is_anomaly": false,
-        "anomaly_type": "",
-        "anomaly_level": ""
-      },
-      {
-        "mgmt": "臺中",
-        "county": "臺中市",
-        "township": "后里區",
-        "contract": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
-        "name": "后里圳后里區后安段0044-0000地號小水力發電設備建置",
-        "capacity_kw": 60,
-        "year": "114年",
-        "operation": "完工併網-\r\n114/12/03向管理處重新申請竣工函，管理處114/12/26重新核發竣工函(農水臺中字第1148450327號)。\r\n115/05/05 重新申請同意備案中。",
-        "vendor": "恆水創電股份有限公司",
         "note": "",
         "stage": "推動中",
         "substage": "推動中",
@@ -13110,40 +13119,6 @@
         "anomaly_level": ""
       },
       {
-        "mgmt": "南投",
-        "county": "台中市",
-        "township": "霧峰區",
-        "contract": "-",
-        "name": "阿罩霧第一圳導水路幹線(迪暘)",
-        "capacity_kw": 20,
-        "year": "114年",
-        "operation": "機組調整中(測試期間：114/07/17~115/01/16)",
-        "vendor": "迪暘有限公司",
-        "note": "",
-        "stage": "推動中",
-        "substage": "推動中",
-        "is_anomaly": true,
-        "anomaly_type": "機組調整中",
-        "anomaly_level": "yellow"
-      },
-      {
-        "mgmt": "嘉南",
-        "county": "嘉義縣",
-        "township": "竹崎鄉",
-        "contract": "-",
-        "name": "中興圳幹線跌水工",
-        "capacity_kw": 0.5,
-        "year": "114年",
-        "operation": "運轉測試中\r\n測試期間：114/12/05~115/01/29\r\n（測試期限屆滿）",
-        "vendor": "山立能源科技有限公司",
-        "note": "",
-        "stage": "推動中",
-        "substage": "推動中",
-        "is_anomaly": true,
-        "anomaly_type": "測試中",
-        "anomaly_level": "yellow"
-      },
-      {
         "mgmt": "花蓮",
         "county": "花蓮縣",
         "township": "吉安鄉",
@@ -13219,7 +13194,7 @@
         "name": "吉安圳2幹線",
         "capacity_kw": 3,
         "year": "114年",
-        "operation": "15/6/10 廠辦辦理展延中",
+        "operation": "1. 115/6/10 廠辦辦理展延中\r\n2. 工作站目前還沒收到正式的文件，目前仍在辦理展延當中",
         "vendor": "張恭合",
         "note": "",
         "stage": "推動中",
@@ -13997,10 +13972,10 @@
     "summary": {
       "total_cases": 87,
       "total_capacity_kw": 31441.58,
-      "completed_cases": 12,
-      "completed_capacity_kw": 27126,
-      "in_progress_cases": 75,
-      "in_progress_capacity_kw": 4315.58
+      "completed_cases": 13,
+      "completed_capacity_kw": 27186,
+      "in_progress_cases": 74,
+      "in_progress_capacity_kw": 4255.58
     },
     "mgmt": [
       {
@@ -14047,10 +14022,10 @@
         "name": "臺中",
         "cases": 4,
         "capacity_kw": 733,
-        "completed_cases": 2,
-        "completed_kw": 672,
-        "in_progress_cases": 2,
-        "in_progress_kw": 61,
+        "completed_cases": 3,
+        "completed_kw": 732,
+        "in_progress_cases": 1,
+        "in_progress_kw": 1,
         "anomaly_cases": 0
       },
       {
@@ -14061,7 +14036,7 @@
         "completed_kw": 0,
         "in_progress_cases": 4,
         "in_progress_kw": 580,
-        "anomaly_cases": 1
+        "anomaly_cases": 0
       },
       {
         "name": "彰化",
@@ -14146,6 +14121,6 @@
     ]
   },
   "meta": {
-    "source": "1150702 小水力盤點 + 1150706 太陽光電盤點彙整版"
+    "source": "1150721 小水力盤點 + 1150721 太陽光電盤點彙整版"
   }
 }
