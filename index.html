@@ -161,6 +161,37 @@
 </style>
 </head>
 <body>
+<!-- 開場載入動畫 -->
+<div id="splash" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#059669 0%,#10b981 60%,#34d399 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:-apple-system,'PingFang TC','Microsoft JhengHei',sans-serif;transition:opacity 0.5s ease-out">
+  <div style="text-align:center">
+    <div style="font-size:13px;letter-spacing:0.35em;opacity:0.85;margin-bottom:12px">農田水利署 · 水域型農業綠能</div>
+    <h1 style="font-size:32px;font-weight:700;margin:0 0 8px;letter-spacing:0.05em">管制考核儀表板</h1>
+    <p style="font-size:14px;opacity:0.75;margin:0 0 40px">TIA · Green Energy Dashboard</p>
+    <div style="width:320px;height:6px;background:rgba(255,255,255,0.2);border-radius:99px;overflow:hidden;margin:0 auto">
+      <div id="splash-bar" style="width:0%;height:100%;background:white;border-radius:99px;box-shadow:0 0 12px rgba(255,255,255,0.6);transition:width 1.4s cubic-bezier(0.4,0,0.2,1)"></div>
+    </div>
+    <div id="splash-text" style="margin-top:18px;font-size:12px;opacity:0.7;letter-spacing:0.1em">正在載入資料...</div>
+  </div>
+</div>
+<script>
+  // 進度條動畫：先跑到 90%，等 window load 後才跑到 100% 並淡出
+  requestAnimationFrame(() => {
+    const bar = document.getElementById('splash-bar');
+    if (bar) bar.style.width = '90%';
+  });
+  window.addEventListener('load', () => {
+    const bar = document.getElementById('splash-bar');
+    const splash = document.getElementById('splash');
+    if (bar) bar.style.width = '100%';
+    setTimeout(() => {
+      if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => splash.remove(), 500);
+      }
+    }, 400);
+  });
+</script>
+
 <div id="app"></div>
 
 <script>
@@ -1012,12 +1043,14 @@ function deriveHydroAnomaly(operation) {
 const SOLAR_STAGE_FILLING_MAP = {
   '已併網': '已完工',
   '施工階段': '施工中',
-  '已解約': '解約',
+  '已解約': '規劃中',
+  '已撤案': '規劃中',
   '土地容許': '申設中',
   '電業籌設': '申設中',
   '併聯審查': '申設中',
   '併聯審查(未送)': '規劃中',
-  '尚未送件': '規劃中'
+  '尚未送件': '規劃中',
+  '規劃中': '規劃中'
 };
 
 // 把單筆 solar 案場物件依填報資料更新(直接 mutate)
@@ -6527,8 +6560,12 @@ function tplHeader() {
             <button class="icon-btn no-print" onclick="openEditor('solar.completed_sites')" style="background:#fef3c7;border-color:#f59e0b;color:#92400e">✏️ 編輯資料</button>
             <button class="icon-btn no-print" onclick="exportJSON()">💾 匯出 JSON</button>
             <button class="icon-btn no-print" onclick="exportDataForDeploy()" style="background:#0ea5e9;color:white;border-color:#0284c7;font-weight:600">☁️ 同步至雲端</button>
-            <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button>
+            <!-- <button class="icon-btn no-print" onclick="state.newProjectModal=true;render();" style="background:#7c3aed;color:white;border-color:#6d28d9;font-weight:600">📋 開新月報專案</button> -->
+            <!-- 上方按鈕已隱藏（暫時用不到） -->
             <a class="icon-btn no-print" href="${FILLING_PAGE_URL}" target="_blank" rel="noopener" title="開啟管理處即時填報頁面（試做版）" style="background:#ecfeff;color:#0e7490;border-color:#06b6d4;font-weight:600;text-decoration:none">🔗 管理處填報</a>
+            <label class="icon-btn no-print" style="background:#dcfce7;color:#166534;border-color:#22c55e;font-weight:600;cursor:pointer" title="匯入從 Firebase 即時填報頁面匯出的各管理處月報 Excel">
+              📥 匯入即時填報<input type="file" accept=".xlsx" multiple onchange="importMonthlySubmissions(event)" style="display:none">
+            </label>
             <label class="icon-btn no-print" style="background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:600;cursor:pointer">
               📥 各管理處回傳<input type="file" accept=".xlsx" multiple onchange="importFillingBase(event)" style="display:none">
             </label>
@@ -6538,8 +6575,9 @@ function tplHeader() {
             <label class="icon-btn no-print" style="cursor:pointer" title="匯入雙週報管考 Excel 更新案場資料">📥 匯入雙週報<input type="file" accept=".xlsx,.xls,.json" onchange="importFile(event)" style="display:none"></label>
             <button class="icon-btn no-print" onclick="resetData()" style="background:#fee2e2;border-color:#dc2626;color:#991b1b">↺ 重置</button>
             <button class="icon-btn no-print" onclick="printDashboard()">${ICON.print}列印 PDF (A4)</button>
-            <button class="icon-btn no-print" onclick="exportRiChiSolar(DATA._richiBase && DATA._richiBase.solar)" title="匯出太陽光電更新版 RiChi（需先匯入 RiChi 基底）" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;font-weight:600">☀️ 匯出太陽光電 RiChi</button>
-            <button class="icon-btn no-print" onclick="exportRiChiHydro(DATA._richiBase && DATA._richiBase.hydro)" title="匯出小水力更新版 RiChi（需先匯入 RiChi 基底）" style="background:#e0f2fe;border-color:#0284c7;color:#0369a1;font-weight:600">💧 匯出小水力 RiChi</button>
+            <!-- 以下兩個 RiChi 匯出按鈕已隱藏（尚未完成） -->
+            <!-- <button class="icon-btn no-print" onclick="exportRiChiSolar(DATA._richiBase && DATA._richiBase.solar)" title="匯出太陽光電更新版 RiChi（需先匯入 RiChi 基底）" style="background:#f0fdf4;border-color:#16a34a;color:#15803d;font-weight:600">☀️ 匯出太陽光電 RiChi</button>
+            <button class="icon-btn no-print" onclick="exportRiChiHydro(DATA._richiBase && DATA._richiBase.hydro)" title="匯出小水力更新版 RiChi（需先匯入 RiChi 基底）" style="background:#e0f2fe;border-color:#0284c7;color:#0369a1;font-weight:600">💧 匯出小水力 RiChi</button> -->
             <div class="flex items-center gap-2 rounded-xl p-1" style="background:#f1f5f9">
               <button class="tab-btn ${state.tab==='solar'?'active-solar':''}" onclick="setState({tab:'solar'})">
                 ${ICON.sun}<span>太陽光電</span><span class="text-xs opacity-80">${solarCount} 案</span>
