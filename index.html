@@ -5894,6 +5894,7 @@ function tplSolarCards() {
     if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
     if (f.type !== 'all' && s.type !== f.type) return false;
     if (f.stage !== 'all' && (s._stage || s.stage) !== f.stage) return false;
+    if (f.vendor !== 'all' && (s.vendor||'') !== f.vendor) return false;
     if (f.search && !(s.name||'').toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
     return true;
   });
@@ -7503,6 +7504,7 @@ function printFilteredView(target) {
       if (f.mgmt !== 'all' && s.mgmt !== f.mgmt) return false;
       if (f.type !== 'all' && s.type !== f.type) return false;
       if (f.stage !== 'all' && (s._stage || s.stage) !== f.stage) return false;
+      if (f.vendor !== 'all' && (s.vendor||'') !== f.vendor) return false;
       if (f.search && !(s.name||'').toLowerCase().includes(f.search.toLowerCase()) && !(s.vendor||'').toLowerCase().includes(f.search.toLowerCase())) return false;
       return true;
     });
@@ -7510,6 +7512,7 @@ function printFilteredView(target) {
     if (f.mgmt !== 'all') conditionParts.push(f.mgmt + '管理處');
     if (f.type !== 'all') conditionParts.push(f.type);
     if (f.stage !== 'all') conditionParts.push(f.stage);
+    if (f.vendor !== 'all') conditionParts.push('廠商「' + f.vendor + '」');
     if (f.search) conditionParts.push('關鍵字「' + f.search + '」');
     countText = '共 ' + filtered.length + ' 案,合計 ' + filtered.reduce((a,c)=>a+(parseFloat(c.capacity_mw)||0),0).toFixed(2) + ' MW';
     cardsHtml = filtered.length > 0 ? filtered.map(tplSolarCard).join('') : '<p style="text-align:center;padding:40px;color:#94a3b8">無符合條件的案場</p>';
