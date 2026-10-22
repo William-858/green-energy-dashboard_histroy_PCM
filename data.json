@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-01",
+  "updated_at": "2026-10-20",
   "solar": {
     "summary": {
       "total_completed_cases": 135,
@@ -28,15 +28,15 @@
       {
         "key": "construction",
         "name": "施工中(含案場施工中下修)",
-        "cases": 2,
-        "mw": 2.04,
+        "cases": 3,
+        "mw": 14.04,
         "color": "#0891b2"
       },
       {
         "key": "admin",
         "name": "申設中",
-        "cases": 21,
-        "mw": 73.53,
+        "cases": 20,
+        "mw": 61.53,
         "color": "#6366f1"
       },
       {
@@ -269,8 +269,8 @@
         "name": "雲林",
         "target_mw": 80,
         "completed_mw": 34.7805,
-        "construction_mw": 0,
-        "admin_mw": 53.5755,
+        "construction_mw": 12,
+        "admin_mw": 41.5755,
         "planning_mw": 12.17,
         "remaining_mw": 65.7455,
         "total_potential_mw": 100.526,
@@ -6384,6 +6384,19 @@
         "renewable_type": "第三型",
         "facility_name": "坑子口圳-4",
         "contract_start_date": "2021-10-01"
+      },
+      {
+        "no": 3,
+        "county": "雲林縣",
+        "type": "圳路",
+        "mgmt": "雲林",
+        "name": "圳路-雲林管理處-斗六大圳及濁幹線第三號進水口導水路",
+        "capacity_mw": 12,
+        "expected_date": "0",
+        "note": "",
+        "progress": "施工中",
+        "vendor": "昱嘉能源有限公司",
+        "stage": "施工中"
       }
     ],
     "admin_sites": [
@@ -6469,26 +6482,6 @@
       },
       {
         "no": 5,
-        "county": "雲林縣",
-        "type": "圳路",
-        "mgmt": "雲林",
-        "name": "圳路-雲林管理處-斗六大圳及濁幹線第三號進水口導水路",
-        "capacity_mw": 12,
-        "progress": "容許使用申請中(台電併聯審查已完成)",
-        "vendor": "昱嘉能源有限公司",
-        "stage": "行政程序中",
-        "cadastral_area_ha": 3.543373,
-        "cadastral_area_m2": 35433.73,
-        "land_no": "林內鄉九芎南段：0593-0000、0785-0000、0790-0000",
-        "work_zone_name": "圳路-雲林管理處-斗六大圳6K+328-6K+753",
-        "work_zone_short": "斗六大圳6K+328-6K+753",
-        "sys_stage": "申設中",
-        "project_name": "斗六大圳及濁幹線第三號進水口導水路太陽光電發電系統計畫案",
-        "renewable_type": "第三型",
-        "facility_name": "斗六大圳6K+328-6K+753"
-      },
-      {
-        "no": 6,
         "county": "屏東縣",
         "type": "圳路",
         "mgmt": "屏東",
@@ -6508,7 +6501,7 @@
         "facility_name": "萬丹圳幹線(二期)"
       },
       {
-        "no": 7,
+        "no": 6,
         "county": "屏東縣",
         "type": "圳路",
         "mgmt": "屏東",
@@ -6528,7 +6521,7 @@
         "facility_name": "萬丹圳幹線(三期)"
       },
       {
-        "no": 8,
+        "no": 7,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6548,7 +6541,7 @@
         "facility_name": "溪口排水"
       },
       {
-        "no": 9,
+        "no": 8,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6568,7 +6561,7 @@
         "facility_name": "太平渠幹線(高寮段)"
       },
       {
-        "no": 10,
+        "no": 9,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6588,7 +6581,7 @@
         "facility_name": "太平渠幹線(泰林段)"
       },
       {
-        "no": 11,
+        "no": 10,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6608,7 +6601,7 @@
         "facility_name": "太平渠幹線(神農段)"
       },
       {
-        "no": 12,
+        "no": 11,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6628,7 +6621,7 @@
         "facility_name": "太平渠幹線(哈拉灣段)"
       },
       {
-        "no": 13,
+        "no": 12,
         "county": "雲林縣",
         "type": "圳路",
         "mgmt": "雲林",
@@ -6648,7 +6641,7 @@
         "facility_name": "濁幹線(三合里)"
       },
       {
-        "no": 14,
+        "no": 13,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6668,7 +6661,7 @@
         "facility_name": "源城排水"
       },
       {
-        "no": 15,
+        "no": 14,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6688,7 +6681,7 @@
         "facility_name": "新城圳幹線"
       },
       {
-        "no": 16,
+        "no": 15,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6708,7 +6701,7 @@
         "facility_name": "豐裡排水"
       },
       {
-        "no": 17,
+        "no": 16,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6728,7 +6721,7 @@
         "facility_name": "林田圳幹線"
       },
       {
-        "no": 18,
+        "no": 17,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6748,7 +6741,7 @@
         "facility_name": "吉安圳二幹線"
       },
       {
-        "no": 19,
+        "no": 18,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6768,7 +6761,7 @@
         "facility_name": "林田圳2支線"
       },
       {
-        "no": 20,
+        "no": 19,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -6788,7 +6781,7 @@
         "facility_name": "豐村圳2支線"
       },
       {
-        "no": 21,
+        "no": 20,
         "county": "花蓮縣",
         "type": "圳路",
         "mgmt": "花蓮",
@@ -14005,6 +13998,6 @@
     ]
   },
   "meta": {
-    "source": "1151001 小水力盤點 + 1150921 太陽光電盤點彙整版"
+    "source": "1151001 小水力盤點 + 1151020 太陽光電盤點彙整版"
   }
 }
