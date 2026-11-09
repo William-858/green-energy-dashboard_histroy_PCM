@@ -1053,7 +1053,62 @@ const SOLAR_STAGE_FILLING_MAP = {
   '規劃中': '規劃中'
 };
 
-// 把單筆 solar 案場物件依填報資料更新(直接 mutate)
+// ---- 填報 → 儀表板：案場名稱比對與依階段搬移 ----
+// 填報系統的案場名稱不帶「圳路-OO管理處-」前綴；少數案場名稱本身不同，用下面的別名表明確對應
+const SOLAR_NAME_ALIASES = {
+  '雲林|斗六大圳': '圳路-雲林管理處-斗六大圳及濁幹線第三號進水口導水路',
+  '花蓮|溪口排水(第一型).(第三型)': '圳路-花蓮管理處-溪口排水'
+};
+const SOLAR_ACTIVE_SECTIONS = ['completed_sites','construction_sites','admin_sites','planning_sites'];
+// 填報「目前階段」→(SOLAR_STAGE_FILLING_MAP)→ 4 大類 → 儀表板清單
+const SOLAR_SECTION_OF_STAGE = { '已完工':'completed_sites', '施工中':'construction_sites', '申設中':'admin_sites', '規劃中':'planning_sites' };
+const SOLAR_STAGE_LABEL_OF_SECTION = { completed_sites:'已完工', construction_sites:'施工中', admin_sites:'行政程序中', planning_sites:'規劃推動-招商中' };
+const SOLAR_SECTION_NAME = { completed_sites:'營運階段(已完工)', construction_sites:'施工階段', admin_sites:'申設階段', planning_sites:'規劃中', cancelled_sites:'解約撤案' };
+function _normMgmtName(m) { return String(m || '').replace(/^台/, '臺').replace('管理處', '').trim(); }
+function _stripSolarPrefix(n) { return String(n || '').replace(/^(圳路|埤塘|農業水庫)-[^-]+管理處-/, '').trim(); }
+// 依「管理處＋案場名稱」找案場；先找完成/施工/申設/規劃，最後才找解約撤案歷史清單
+function _findSolarSite(name, mgmt) {
+  const m = _normMgmtName(mgmt);
+  const alias = SOLAR_NAME_ALIASES[m + '|' + name];
+  for (const sec of SOLAR_ACTIVE_SECTIONS.concat(['cancelled_sites'])) {
+    const arr = DATA.solar[sec] || [];
+    for (let i = 0; i < arr.length; i++) {
+      const x = arr[i];
+      if (m && x.mgmt && _normMgmtName(x.mgmt) !== m) continue;
+      if (x.name === name || (alias && x.name === alias) || _stripSolarPrefix(x.name) === name) return { site: x, sec, idx: i };
+    }
+  }
+  return null;
+}
+// 輿情事件用「清單:索引」記錄關聯案場，案場搬動後索引會變 → 搬動前記下物件，搬動後改寫
+function _collectOpinionRefTargets() {
+  const out = [];
+  const all = loadAllOpinions();
+  ['solar', 'hydro'].forEach(tab => (all[tab] || []).forEach(op => {
+    const p = typeof op.case_ref === 'string' ? op.case_ref.split(':') : [];
+    if (p.length < 3 || p[0] !== 'solar' || p[1] === 'mgmt') return;
+    const row = (DATA.solar[p[1]] || [])[parseInt(p[2])];
+    if (row) out.push({ tab, opId: op.id, row });
+  }));
+  return out;
+}
+function _remapOpinionRefs(targets) {
+  if (!targets.length) return 0;
+  const all = loadAllOpinions();
+  let n = 0;
+  targets.forEach(t => {
+    const op = (all[t.tab] || []).find(o => o.id === t.opId);
+    if (!op) return;
+    for (const sec of SOLAR_ACTIVE_SECTIONS.concat(['cancelled_sites'])) {
+      const i = DATA.solar[sec].indexOf(t.row);
+      if (i >= 0) { const ref = 'solar:' + sec + ':' + i; if (ref !== op.case_ref) { op.case_ref = ref; n++; } break; }
+    }
+  });
+  if (n) { try { localStorage.setItem(OPINION_KEY, JSON.stringify(all)); } catch (e) {} }
+  return n;
+}
+
+// 把單筆 solar 案場物件依填報資料更新(直接 mutate)；階段的搬移由 applyMonthlySubmissions 處理
 function _applySolarUpdate(site, row, period) {
   let changed = false;
   const noteParts = [];
@@ -1068,16 +1123,7 @@ function _applySolarUpdate(site, row, period) {
     }
   }
 
-  // 目前階段 → 階段
-  const stageRaw = String(row['目前階段'] || '').trim();
-  if (stageRaw && SOLAR_STAGE_FILLING_MAP[stageRaw]) {
-    const newStage = SOLAR_STAGE_FILLING_MAP[stageRaw];
-    if (site.stage !== newStage) {
-      noteParts.push('階段 ' + site.stage + '→' + newStage);
-      site.stage = newStage;
-      changed = true;
-    }
-  }
+  // 目前階段：由 applyMonthlySubmissions 依清單搬移（這裡不再只改 stage 文字）
 
   // 目前辦理情況/困難點說明/專案團隊處理建議/備註 → 附加到 note
   const extraNotes = [];
@@ -1087,8 +1133,10 @@ function _applySolarUpdate(site, row, period) {
   });
   if (extraNotes.length > 0) {
     const tag = '[' + period + ']更新:' + extraNotes.join('；');
-    site.note = (site.note ? site.note + '\n' : '') + tag;
-    changed = true;
+    if (!site.note || !site.note.includes(tag)) {        // 重複按「套用」不會重複附加
+      site.note = (site.note ? site.note + '\n' : '') + tag;
+      changed = true;
+    }
   }
 
   if (changed && noteParts.length > 0) {
@@ -1158,9 +1206,9 @@ function applyMonthlySubmissions(period) {
 
   const updated = [];   // { category, name, mgmt, fields }
   const unmatched = []; // { category, name, mgmt, sheet }
-
-  // 太陽光電:合併 5 個陣列以便用名稱搜尋
-  const allSolarSections = ['completed_sites','construction_sites','admin_sites','planning_sites','cancelled_sites'];
+  const moved = [];     // { name, mgmt, from, to, stageRaw }
+  const review = [];    // 需人工確認、未自動搬移
+  const opinionTargets = _collectOpinionRefTargets();
 
   Object.entries(proj.submissions).forEach(([mgmt, sub]) => {
     const sheets = sub.sheets || {};
@@ -1169,17 +1217,35 @@ function applyMonthlySubmissions(period) {
     (sheets.solar_addendum || []).forEach(row => {
       const name = String(row['案場名稱'] || '').trim();
       if (!name) return;
-      let found = null;
-      for (const sec of allSolarSections) {
-        const arr = DATA.solar[sec];
-        const idx = arr.findIndex(s => s.name === name);
-        if (idx >= 0) { found = arr[idx]; break; }
-      }
-      if (!found) {
+      const hit = _findSolarSite(name, mgmt);
+      if (!hit) {
         unmatched.push({ category: 'solar', name, mgmt, sheet: '太陽光電' });
         return;
       }
-      const changed = _applySolarUpdate(found, row, period);
+      const found = hit.site;
+      let changed = false;
+
+      // 目前階段 → 4 大類 → 不同類就把案場搬到對應清單（總表、案場清單都是依清單分類統計）
+      const stageRaw = String(row['目前階段'] || '').trim();
+      const mapped = SOLAR_STAGE_FILLING_MAP[stageRaw];
+      const targetSec = mapped ? SOLAR_SECTION_OF_STAGE[mapped] : null;
+      if (targetSec && SOLAR_ACTIVE_SECTIONS.includes(hit.sec) && targetSec !== hit.sec) {
+        if (hit.sec === 'completed_sites') {
+          // 已完工案場被填成較前面的階段，視為可疑，不自動退回
+          review.push({ name: found.name, mgmt, reason: '已完工案場，填報階段為「' + stageRaw + '」，未自動搬移' });
+        } else if (hit.sec === 'planning_sites' && /撤案|解約/.test(String(found.progress || ''))) {
+          // 儀表板記為撤案/解約的案場，不因填報系統裡殘留的舊資料而「復活」
+          review.push({ name: found.name, mgmt, reason: '儀表板記為「' + found.progress + '」，填報階段為「' + stageRaw + '」，未自動搬移（請確認填報系統是否有殘留的舊案場）' });
+        } else {
+          DATA.solar[hit.sec].splice(hit.idx, 1);
+          found.stage = SOLAR_STAGE_LABEL_OF_SECTION[targetSec];
+          DATA.solar[targetSec].push(found);
+          found.note = (found.note ? found.note + '\n' : '') + '[' + period + ']階段 ' + SOLAR_SECTION_NAME[hit.sec] + '→' + SOLAR_SECTION_NAME[targetSec] + '（填報目前階段：' + stageRaw + '）';
+          moved.push({ name: found.name, mgmt, from: SOLAR_SECTION_NAME[hit.sec], to: SOLAR_SECTION_NAME[targetSec], stageRaw });
+          changed = true;
+        }
+      }
+      if (_applySolarUpdate(found, row, period)) changed = true;
       if (changed) updated.push({ category: 'solar', name, mgmt });
     });
 
@@ -1212,13 +1278,16 @@ function applyMonthlySubmissions(period) {
     // 潛力案場 / 洽詢紀錄:不更新 405/92 案清單
   });
 
+  // 搬動案場後，修正輿情事件的關聯案場索引
+  const opinionRefsUpdated = _remapOpinionRefs(opinionTargets);
+
   // 重算 summary / mgmt 統計
   recomputeSummaries();
 
   // 寫回 localStorage
   saveData();
 
-  return { updated, unmatched };
+  return { updated, unmatched, moved, review, opinionRefsUpdated };
 }
 
 // ==================== Stage E: 匯出更新後的案場清單(51欄/26欄,原始格式) ====================
@@ -1315,7 +1384,17 @@ function applyAndShowResult(period) {
   if (!result) return;
   let msg = '✅ 已套用 ' + period + ' 填報更新\n\n';
   msg += '更新案場:' + result.updated.length + ' 筆\n';
-  msg += '未匹配案場:' + result.unmatched.length + ' 筆\n';
+  msg += '階段變動（已搬到對應清單）:' + result.moved.length + ' 筆\n';
+  if (result.moved.length > 0) {
+    result.moved.slice(0, 40).forEach(m => { msg += '· [' + m.mgmt + '] ' + m.name.replace(/^(圳路|埤塘|農業水庫)-[^-]+管理處-/, '') + '：' + m.from + ' → ' + m.to + '\n'; });
+    if (result.moved.length > 40) msg += '...(共 ' + result.moved.length + ' 筆,僅顯示前 40)\n';
+  }
+  if (result.review && result.review.length > 0) {
+    msg += '\n⚠️ 需人工確認（未自動搬移）:' + result.review.length + ' 筆\n';
+    result.review.forEach(r => { msg += '· [' + r.mgmt + '] ' + r.name + '：' + r.reason + '\n'; });
+  }
+  if (result.opinionRefsUpdated > 0) msg += '\n已同步修正 ' + result.opinionRefsUpdated + ' 則輿情事件的關聯案場（請到輿情區「匯出 JSON」並上傳 opinions.json）\n';
+  msg += '\n未匹配案場:' + result.unmatched.length + ' 筆\n';
   if (result.unmatched.length > 0) {
     msg += '\n──────────────\n未匹配清單(案場名稱在405/92案中找不到對應,請檢查名稱是否一致):\n';
     result.unmatched.slice(0, 30).forEach(u => {
@@ -1323,6 +1402,7 @@ function applyAndShowResult(period) {
     });
     if (result.unmatched.length > 30) msg += '...(共 ' + result.unmatched.length + ' 筆,僅顯示前 30)';
   }
+  msg += '\n\n⚠️ 這些變更目前只存在這個瀏覽器。儀表板每次開啟都會用 GitHub 上的 data.json 覆蓋，\n請按上方「☁️ 同步至雲端」下載 data.json 並上傳 GitHub，其他人才看得到，重新整理後也才不會消失。';
   alert(msg);
   render();
 }
